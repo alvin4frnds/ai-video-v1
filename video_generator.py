@@ -10,6 +10,7 @@ from typing import List, Optional
 from mixtral_client import MixtralClient
 from sd_client import StableDiffusionClient
 from face_analyzer import FaceAnalyzer
+from face_selector import FaceSelector
 
 class VideoGenerator:
     def __init__(self):
@@ -31,11 +32,28 @@ class VideoGenerator:
         # Initialize Stable Diffusion client with network IP
         self.sd_client = StableDiffusionClient(base_url="http://192.168.0.199:8001")
         
-        # Initialize Face Analyzer
+        # Initialize Face Analyzer and Face Selector
         self.face_analyzer = FaceAnalyzer()
+        self.face_selector = FaceSelector()
+        
+        # Select random face for consistency
+        self.selected_face_path = self.face_selector.select_random_face(seed=self.base_seed)
+        if self.selected_face_path:
+            face_info = self.face_selector.get_current_selection()
+            logging.info(f"🎭 Selected face for video: {face_info['face_filename']} from {face_info['person']}")
+            logging.info(f"🎭 Face will be swapped into all generated images for ultimate consistency")
+        else:
+            logging.warning("⚠️  No face images found - will use character consistency only")
         
         logging.info("VideoGenerator initialized")
         logging.info(f"Output directory: {self.output_dir}")
+        
+        # Log available faces
+        available_faces = self.face_selector.list_all_faces()
+        if available_faces:
+            logging.info(f"👥 Available faces: {dict(available_faces)}")
+        else:
+            logging.info("👥 No face images found in in/individual/ directory")
         
         # Check Mixtral availability
         if self.mixtral.check_connection():
@@ -189,6 +207,12 @@ class VideoGenerator:
         # Initialize batch analysis data
         batch_analysis = []
         
+        # Log face selection info
+        if self.selected_face_path:
+            face_info = self.face_selector.get_current_selection()
+            logging.info(f"🎭 Scene {scene_id} will use face: {face_info['face_filename']} from {face_info['person']}")
+            logging.info(f"🎭 Roop available: {getattr(self.sd_client, 'roop_available', False)}")
+        
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         final_filename = f"frame_{scene_id:03d}_{timestamp}.png"
         final_filepath = os.path.join(self.frames_dir, final_filename)
@@ -214,19 +238,43 @@ class VideoGenerator:
             else:
                 logging.info(f"🚫 Using default character consistency constraints")
             
-            batch_paths = self.sd_client.generate_batch_images(
-                prompt=scene_data['prompt'],
-                output_dir=batch_dir,
-                count=6,
-                width=512,
-                height=768,
-                steps=28,
-                cfg_scale=7,
-                sampler="DPM++ 2M SDE",
-                scheduler="Karras",
-                seed=scene_seed,
-                negative_prompt=scene_data.get('negative_prompt', '')
-            )
+            # Check if we should use Roop face swapping
+            if self.selected_face_path and getattr(self.sd_client, 'roop_available', False):
+                logging.info(f"🎭 Using Roop face swapping for ultimate consistency")
+                logging.info(f"🎭 Generating {6} images with face swap from {os.path.basename(self.selected_face_path)}")
+                
+                batch_paths = self.sd_client.generate_batch_with_face_swap(
+                    prompt=scene_data['prompt'],
+                    face_image_path=self.selected_face_path,
+                    output_dir=batch_dir,
+                    count=6,
+                    width=512,
+                    height=768,
+                    steps=28,
+                    cfg_scale=7,
+                    sampler="DPM++ 2M SDE",
+                    scheduler="Karras",
+                    seed=scene_seed,
+                    negative_prompt=scene_data.get('negative_prompt', '')
+                )
+            else:
+                # Fallback to regular batch generation
+                if self.selected_face_path:
+                    logging.info(f"⚠️  Roop not available - using regular generation with character consistency")
+                
+                batch_paths = self.sd_client.generate_batch_images(
+                    prompt=scene_data['prompt'],
+                    output_dir=batch_dir,
+                    count=6,
+                    width=512,
+                    height=768,
+                    steps=28,
+                    cfg_scale=7,
+                    sampler="DPM++ 2M SDE",
+                    scheduler="Karras",
+                    seed=scene_seed,
+                    negative_prompt=scene_data.get('negative_prompt', '')
+                )
             
             if batch_paths:
                 logging.info(f"🔎 Starting face analysis and selection for {len(batch_paths)} images...")
@@ -443,6 +491,8 @@ class VideoGenerator:
                     'clothing_consistency': analysis.get('clothing_data', {}).get('consistency_score', 0.5),
                     'clothing_colors': analysis.get('clothing_data', {}).get('dominant_colors', []),
                     'clothing_error': analysis.get('clothing_data', {}).get('error', None),
+                    'roop_face_used': self.selected_face_path is not None,
+                    'selected_face_person': self.face_selector.selected_person if self.selected_face_path else None,
                     'is_selected': analysis == best_analysis
                 })
             

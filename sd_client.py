@@ -15,10 +15,12 @@ class StableDiffusionClient:
         self.base_url = base_url
         self.session = requests.Session()
         self.available_adetailer_models = []
+        self.roop_available = False
         logging.info(f"Initialized Stable Diffusion client with base URL: {base_url}")
         
-        # Check for ADetailer availability
+        # Check for extensions availability
         self._check_adetailer_models()
+        self._check_roop_availability()
     
     def _check_adetailer_models(self):
         """Check which ADetailer models are available"""
@@ -499,6 +501,216 @@ class StableDiffusionClient:
             logging.error(f"Error switching model: {str(e)}")
             return False
     
+    def _check_roop_availability(self):
+        """Check if Roop extension is available and enabled"""
+        try:
+            response = self.session.get(f"{self.base_url}/sdapi/v1/extensions")
+            if response.status_code == 200:
+                extensions = response.json()
+                for ext in extensions:
+                    if ('roop' in ext.get('name', '').lower() or 
+                        'roop' in ext.get('title', '').lower()) and ext.get('enabled', False):
+                        self.roop_available = True
+                        logging.info(f"✅ Roop extension found and enabled: {ext.get('name', 'Unknown')}")
+                        return
+                
+                logging.warning("⚠️  Roop extension not found or not enabled")
+            else:
+                logging.warning(f"Failed to check extensions: {response.status_code}")
+        except Exception as e:
+            logging.error(f"Error checking Roop availability: {str(e)}")
+            self.roop_available = False
+    
+    def _encode_image_to_base64(self, image_path: str) -> Optional[str]:
+        """Encode image file to base64 string for API"""
+        try:
+            with Image.open(image_path) as img:
+                # Convert to RGB if necessary
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                
+                # Save to base64
+                buffered = BytesIO()
+                img.save(buffered, format="PNG")
+                img_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+                return img_base64
+        except Exception as e:
+            logging.error(f"Error encoding image {image_path}: {str(e)}")
+            return None
+    
+    def generate_image_with_face_swap(self, prompt: str, face_image_path: str, output_path: str, 
+                                    width: int = 512, height: int = 768, steps: int = 30, 
+                                    cfg_scale: float = 7, sampler: str = "DPM++ 2M SDE", 
+                                    scheduler: str = "Karras", seed: int = -1, negative_prompt: str = "") -> bool:
+        """Generate image with Roop face swapping"""
+        
+        if not self.roop_available:
+            logging.error("Roop extension not available - falling back to regular generation")
+            return self.generate_image(prompt, output_path, width, height, steps, cfg_scale, sampler, scheduler, seed, negative_prompt)
+        
+        # Encode face image
+        face_b64 = self._encode_image_to_base64(face_image_path)
+        if not face_b64:
+            logging.error(f"Failed to encode face image: {face_image_path}")
+            return False
+        
+        logging.info(f"🎭 Generating image with Roop face swap...")
+        logging.info(f"Face source: {os.path.basename(face_image_path)}")
+        logging.info(f"Parameters: {width}x{height}, steps={steps}, cfg={cfg_scale}, seed={seed}")
+        
+        # Build payload with Roop extension
+        payload = {
+            "prompt": prompt,
+            "negative_prompt": negative_prompt,
+            "width": width,
+            "height": height,
+            "steps": steps,
+            "cfg_scale": cfg_scale,
+            "sampler_name": sampler,
+            "scheduler": scheduler,
+            "seed": seed,
+            "batch_size": 1,
+            "n_iter": 1,
+            "restore_faces": False,  # Disable since we're using Roop
+            "tiling": False,
+            "do_not_save_samples": False,
+            "do_not_save_grid": False,
+            
+            # Roop extension parameters
+            "alwayson_scripts": {
+                "roop": {
+                    "args": [
+                        face_b64,          # Source face image (base64)
+                        True,              # Enable Roop
+                        "0",               # Face index (0 for first face)
+                        face_b64,          # Reference image (same as source)
+                        True,              # Restore face after swap
+                        0.8,               # Face restoration visibility
+                        None,              # Codeformer weight
+                        True,              # Restore face first
+                        "CodeFormer",     # Upscaler
+                        1,                 # Upscaler scale
+                        1,                 # Upscaler visibility
+                        False,             # Swap in source
+                        True,              # Swap in generated
+                        1,                 # Console logging level
+                        0,                 # Gender detection source
+                        0,                 # Gender detection target
+                        False,             # Save original
+                        0.6,               # Face mask correction
+                        0,                 # Face mask blur
+                        False,             # Face mask padding
+                        "max"              # Macs face parsing
+                    ]
+                }
+            }
+        }
+        
+        # Add ADetailer if available (but less critical with Roop)
+        if self.available_adetailer_models:
+            adetailer_args = self._build_adetailer_args()
+            if adetailer_args:
+                payload["alwayson_scripts"]["adetailer"] = {"args": adetailer_args}
+                logging.info(f"🔧 ADetailer + Roop combination enabled")
+        
+        try:
+            logging.info(f"📡 Sending Roop face swap request to {self.base_url}/sdapi/v1/txt2img")
+            
+            response = self.session.post(
+                f"{self.base_url}/sdapi/v1/txt2img",
+                json=payload,
+                timeout=120
+            )
+            
+            logging.info(f"📡 SD API response status: {response.status_code}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                logging.info(f"📊 SD API returned result with keys: {list(result.keys())}")
+                
+                if 'images' in result and len(result['images']) > 0:
+                    logging.info(f"🖼️  SD API returned {len(result['images'])} images")
+                    
+                    # Decode and save the first image
+                    image_b64 = result['images'][0]
+                    image_data = base64.b64decode(image_b64)
+                    
+                    with open(output_path, 'wb') as f:
+                        f.write(image_data)
+                    
+                    logging.info(f"✅ Roop face-swapped image generated successfully: {output_path}")
+                    
+                    # Log generation info if available
+                    if 'info' in result:
+                        info = json.loads(result['info'])
+                        actual_seed = info.get('seed', 'Unknown')
+                        logging.info(f"🎲 Generated with actual seed: {actual_seed}")
+                    
+                    return True
+                else:
+                    logging.error("❌ No images returned from SD API")
+                    return False
+            else:
+                logging.error(f"❌ SD API error: {response.status_code} - {response.text}")
+                return False
+                
+        except Exception as e:
+            logging.error(f"💥 Error in Roop face swap generation: {str(e)}")
+            return False
+    
+    def generate_batch_with_face_swap(self, prompt: str, face_image_path: str, output_dir: str,
+                                    count: int = 6, width: int = 512, height: int = 768, 
+                                    steps: int = 30, cfg_scale: float = 7, sampler: str = "DPM++ 2M SDE",
+                                    scheduler: str = "Karras", seed: int = -1, negative_prompt: str = "") -> List[str]:
+        """Generate batch of images with consistent face swapping"""
+        
+        logging.info(f"🎭 Starting batch generation with Roop face swap")
+        logging.info(f"Face source: {os.path.basename(face_image_path)}")
+        logging.info(f"Generating {count} images with face consistency")
+        
+        batch_paths = []
+        
+        # Generate images in 2 batches of 3 (as per existing system)
+        batch_size = 3
+        num_batches = (count + batch_size - 1) // batch_size
+        
+        for batch_num in range(num_batches):
+            remaining = count - len(batch_paths)
+            current_batch_size = min(batch_size, remaining)
+            
+            logging.info(f"🔄 Generating batch {batch_num + 1}/{num_batches} with {current_batch_size} images")
+            
+            for i in range(current_batch_size):
+                # Use different seeds for variation
+                batch_seed = seed + (batch_num * batch_size + i) if seed != -1 else -1
+                
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"roop_batch_{batch_num}_{i}_{timestamp}.png"
+                output_path = os.path.join(output_dir, filename)
+                
+                success = self.generate_image_with_face_swap(
+                    prompt=prompt,
+                    face_image_path=face_image_path,
+                    output_path=output_path,
+                    width=width,
+                    height=height,
+                    steps=steps,
+                    cfg_scale=cfg_scale,
+                    sampler=sampler,
+                    scheduler=scheduler,
+                    seed=batch_seed,
+                    negative_prompt=negative_prompt
+                )
+                
+                if success:
+                    batch_paths.append(output_path)
+                    logging.info(f"✅ Generated image {len(batch_paths)}/{count}: {filename}")
+                else:
+                    logging.error(f"❌ Failed to generate image {batch_num}_{i}")
+        
+        logging.info(f"🎭 Batch generation complete: {len(batch_paths)}/{count} images generated with face swap")
+        return batch_paths
+    
     def get_progress(self) -> Dict:
         """Get current generation progress"""
         try:
@@ -517,4 +729,5 @@ class StableDiffusionClient:
             return response.status_code == 200
         except Exception as e:
             logging.error(f"Error interrupting generation: {str(e)}")
+            return False
             return False

@@ -204,6 +204,8 @@ def create_batch_analysis_display(batch_analysis):
             clothing_consistency = analysis.get('clothing_consistency', 0.5)
             clothing_colors = analysis.get('clothing_colors', [])
             clothing_error = analysis.get('clothing_error', None)
+            roop_face_used = analysis.get('roop_face_used', False)
+            selected_face_person = analysis.get('selected_face_person', None)
             
             report_lines.append(f"### {rank_icon} {filename}{selected_icon}")
             report_lines.append(f"- **Overall Score**: {score:.3f}")
@@ -215,6 +217,10 @@ def create_batch_analysis_display(batch_analysis):
             if clothing_colors:
                 color_str = ', '.join([f"RGB({r},{g},{b})" for r, g, b in clothing_colors[:3]])
                 report_lines.append(f"- **Dominant Colors**: {color_str}")
+            if roop_face_used:
+                report_lines.append(f"- **Roop Face Swap**: ✅ Used (from {selected_face_person})")
+            else:
+                report_lines.append(f"- **Roop Face Swap**: ❌ Not used (character consistency only)")
             
             if error:
                 report_lines.append(f"- **Face Analysis Error**: ⚠️ {error}")
@@ -254,6 +260,8 @@ def create_batch_summary_stats(batch_analysis):
     realistic_count = sum(1 for analysis in batch_analysis if analysis.get('has_realistic_face', False))
     avg_clothing_consistency = sum(analysis.get('clothing_consistency', 0.5) for analysis in batch_analysis) / total_images if total_images > 0 else 0.5
     high_consistency_count = sum(1 for analysis in batch_analysis if analysis.get('clothing_consistency', 0.5) > 0.7)
+    roop_used_count = sum(1 for analysis in batch_analysis if analysis.get('roop_face_used', False))
+    face_persons = set(analysis.get('selected_face_person') for analysis in batch_analysis if analysis.get('selected_face_person'))
     
     methods_used = set()
     for analysis in batch_analysis:
@@ -267,6 +275,8 @@ def create_batch_summary_stats(batch_analysis):
 - **Realistic Faces**: {realistic_count}/{total_images} ({realistic_count/total_images*100:.1f}%)
 - **Average Clothing Consistency**: {avg_clothing_consistency:.3f}
 - **High Consistency Images**: {high_consistency_count}/{total_images} ({high_consistency_count/total_images*100:.1f}%)
+- **Roop Face Swap Used**: {roop_used_count}/{total_images} ({roop_used_count/total_images*100:.1f}%)
+- **Face Source**: {', '.join(face_persons) if face_persons else 'None'}
 - **Detection Methods Used**: {', '.join(sorted(methods_used)) if methods_used else 'None'}
 """
     return stats

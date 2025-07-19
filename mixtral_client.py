@@ -36,42 +36,53 @@ class MixtralClient:
             return False
     
     def generate_scene_prompts(self, scenes: List[str]) -> List[Dict[str, str]]:
-        """Generate enhanced image prompts for each scene using Mixtral"""
+        """Generate enhanced image prompts for each scene using Mixtral with consistent character"""
         enhanced_scenes = []
+        
+        # First, generate a detailed character description for consistency
+        character_profile = self._generate_character_profile(scenes)
+        logging.info(f"Generated character profile for consistency across {len(scenes)} scenes")
+        logging.info(f"Character: {character_profile[:100]}...")
         
         for i, scene in enumerate(scenes):
             logging.info(f"Generating enhanced prompt for scene {i+1}/{len(scenes)}")
             
             # Create prompt for Mixtral to enhance the scene description
-            system_prompt = """You are an expert at creating detailed, visual prompts for AI image generation. 
-Your task is to convert scene descriptions into highly detailed, cinematic image prompts that will create stunning visuals.
+            system_prompt = f"""You are an expert at creating detailed, visual prompts for AI image generation. 
+Your task is to convert scene descriptions into highly detailed, cinematic image prompts featuring a CONSISTENT CHARACTER.
+
+CHARACTER PROFILE (use this EXACT character in ALL scenes):
+{character_profile}
 
 IMPORTANT CONSTRAINTS:
-- ALWAYS limit to EXACTLY ONE PERSON in the scene
-- Add negative prompts to prevent multiple people
-- Focus on single character scenarios only
+- ALWAYS use the EXACT character described above
+- Maintain complete visual consistency (same person, same clothing, same appearance)
+- NEVER change the character's appearance, clothing, or features
+- Add negative prompts to prevent multiple people or character variations
 
 Focus on:
-- Visual composition and camera angles for ONE person
+- Visual composition and camera angles for the consistent character
 - Lighting and atmosphere
 - Color palette and mood
-- Single character details and expressions
+- Character expressions and poses (keeping same appearance)
 - Environmental details
 - Artistic style
 
 Respond in this JSON format:
-{
-  "positive_prompt": "detailed positive prompt here (max 150 words)",
-  "negative_prompt": "multiple people, crowd, group, two people, three people, many people, other person, additional person, background people, extra people, duplicate person"
-}
+{{
+  "positive_prompt": "detailed positive prompt featuring the exact character (max 150 words)",
+  "negative_prompt": "multiple people, crowd, group, two people, three people, many people, other person, additional person, background people, extra people, duplicate person, different clothing, different hair, different appearance"
+}}
 
 Keep prompts concise but descriptive."""
             
-            user_prompt = f"""Convert this scene into a detailed image generation prompt with negative prompts:
+            user_prompt = f"""Convert this scene into a detailed image generation prompt featuring the CONSISTENT CHARACTER:
+
+CHARACTER TO USE: {character_profile}
 
 Scene: {scene}
 
-Create a cinematic, detailed prompt for EXACTLY ONE PERSON that an AI image generator can use. Include comprehensive negative prompts to prevent multiple people from appearing.
+Create a cinematic, detailed prompt featuring the EXACT character described above in this scene. The character's appearance, clothing, and features must remain identical to the profile. Include comprehensive negative prompts to prevent multiple people or character variations.
 
 Respond with JSON containing both positive_prompt and negative_prompt fields."""
             
@@ -103,8 +114,8 @@ Respond with JSON containing both positive_prompt and negative_prompt fields."""
                 
             except Exception as e:
                 logging.error(f"Failed to generate prompt for scene {i+1}: {str(e)}")
-                # Fallback to basic prompt enhancement
-                fallback_data = self._fallback_prompt_enhancement(scene)
+                # Fallback to basic prompt enhancement with character profile
+                fallback_data = self._fallback_prompt_enhancement(scene, character_profile)
                 enhanced_scenes.append({
                     'scene_id': i + 1,
                     'original_description': scene,
@@ -115,6 +126,56 @@ Respond with JSON containing both positive_prompt and negative_prompt fields."""
                 })
         
         return enhanced_scenes
+    
+    def _generate_character_profile(self, scenes: List[str]) -> str:
+        """Generate a detailed character description for consistency across all scenes"""
+        
+        # Analyze scenes to determine character type
+        all_scenes_text = " ".join(scenes)
+        
+        system_prompt = """You are an expert character designer for AI image generation. 
+Create a highly detailed, consistent character description that will be used across multiple scenes in a video.
+
+Your task is to describe ONE person in great detail including:
+- Physical appearance (age, ethnicity, height, build)
+- Facial features (eyes, hair, skin tone, distinctive features)
+- Clothing and style (outfit, colors, accessories, footwear)
+- Overall aesthetic and personality impression
+
+Be specific enough that an AI can generate the same person consistently across different scenes.
+Keep the description concise but comprehensive (max 100 words).
+
+Respond with just the character description, no additional text."""
+
+        user_prompt = f"""Based on these scene descriptions, create a detailed character profile for the main person who will appear throughout:
+
+Scenes: {all_scenes_text}
+
+Create a comprehensive character description focusing on visual consistency for AI image generation."""
+        
+        try:
+            character_description = self._call_mixtral(system_prompt, user_prompt)
+            logging.info("Successfully generated character profile with Mixtral")
+            return character_description.strip()
+        except Exception as e:
+            logging.warning(f"Failed to generate character profile with Mixtral: {str(e)}")
+            # Fallback character profile
+            return self._fallback_character_profile(all_scenes_text)
+    
+    def _fallback_character_profile(self, scenes_text: str) -> str:
+        """Generate fallback character profile when Mixtral is unavailable"""
+        logging.warning("Using fallback character profile generation")
+        
+        # Basic character based on scene content
+        if any(word in scenes_text.lower() for word in ['woman', 'she', 'her', 'girl', 'lady']):
+            character = "Young woman in her mid-20s, shoulder-length brown hair, warm brown eyes, fair complexion, wearing a casual red dress with white sneakers, friendly and approachable demeanor, 5'6\" height, slim build"
+        elif any(word in scenes_text.lower() for word in ['man', 'he', 'his', 'guy', 'male']):
+            character = "Young man in his late 20s, short dark hair, blue eyes, medium complexion, wearing casual jeans and navy blue t-shirt with white sneakers, confident posture, 5'10\" height, athletic build"
+        else:
+            # Default to woman if unclear
+            character = "Young woman in her mid-20s, shoulder-length brown hair, warm brown eyes, fair complexion, wearing a casual red dress with white sneakers, friendly and approachable demeanor, 5'6\" height, slim build"
+        
+        return character
     
     def _call_mixtral(self, system_prompt: str, user_prompt: str) -> str:
         """Make API call to Mixtral via Ollama"""
@@ -145,15 +206,18 @@ Respond with JSON containing both positive_prompt and negative_prompt fields."""
         else:
             raise Exception(f"Mixtral API error: {response.status_code} - {response.text}")
     
-    def _fallback_prompt_enhancement(self, scene: str) -> Dict[str, str]:
+    def _fallback_prompt_enhancement(self, scene: str, character_profile: str = "") -> Dict[str, str]:
         """Fallback prompt enhancement when Mixtral is unavailable"""
         logging.warning("Using fallback prompt enhancement")
         
         # Ensure single person language
         scene_single = scene.replace(" people ", " person ").replace(" they ", " she ").replace(" them ", " her ")
         
-        # Basic enhancement with common cinematic descriptors
-        positive_prompt = f"single person, {scene_single}, one person only, cinematic lighting, high quality, detailed, professional photography, 4k resolution, dramatic composition, vivid colors"
+        # Build prompt with character profile if available
+        if character_profile:
+            positive_prompt = f"{character_profile}, {scene_single}, consistent character, same appearance, cinematic lighting, high quality, detailed, professional photography, 4k resolution, dramatic composition, vivid colors"
+        else:
+            positive_prompt = f"single person, {scene_single}, one person only, cinematic lighting, high quality, detailed, professional photography, 4k resolution, dramatic composition, vivid colors"
         
         # Add style based on scene content
         if any(word in scene.lower() for word in ['night', 'dark', 'shadow']):
@@ -165,8 +229,8 @@ Respond with JSON containing both positive_prompt and negative_prompt fields."""
         elif any(word in scene.lower() for word in ['city', 'urban', 'building']):
             positive_prompt += ", urban environment, architectural details, street photography"
         
-        # Comprehensive negative prompt for single person constraint
-        negative_prompt = "multiple people, crowd, group, two people, three people, many people, other person, additional person, background people, extra people, duplicate person, several people, couple, pair, twins, family, team, friends, strangers, bystanders"
+        # Comprehensive negative prompt for single person constraint and character consistency
+        negative_prompt = "multiple people, crowd, group, two people, three people, many people, other person, additional person, background people, extra people, duplicate person, several people, couple, pair, twins, family, team, friends, strangers, bystanders, different clothing, different hair, different appearance, changed outfit, different person"
         
         return {
             'positive_prompt': positive_prompt,

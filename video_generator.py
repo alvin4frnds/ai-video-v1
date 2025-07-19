@@ -140,7 +140,9 @@ class VideoGenerator:
             else:
                 scene_descriptions.append(scene)
         
-        # Use Mixtral to generate enhanced prompts for each scene
+        logging.info(f"🎭 Generating consistent character profile for {len(scene_descriptions)} scenes...")
+        
+        # Use Mixtral to generate enhanced prompts for each scene with character consistency
         enhanced_scenes = self.mixtral.generate_scene_prompts(scene_descriptions)
         
         scene_plan = []
@@ -200,12 +202,14 @@ class VideoGenerator:
             logging.info(f"🎲 Scene {scene_id} seed: {scene_seed} (base: {self.base_seed} + scene: {scene_id})")
             logging.info(f"📁 Batch directory: {os.path.basename(batch_dir)}")
             
-            # Log negative prompt usage
+            # Log negative prompt usage and character consistency
             negative_prompt = scene_data.get('negative_prompt', '')
             if negative_prompt:
-                logging.info(f"🚫 Single person constraint: {negative_prompt[:60]}...")
+                logging.info(f"🚫 Character consistency enforced: {negative_prompt[:60]}...")
+                if 'different clothing' in negative_prompt or 'different appearance' in negative_prompt:
+                    logging.info(f"🎭 Character variation prevention active")
             else:
-                logging.info(f"🚫 Using default single person constraints")
+                logging.info(f"🚫 Using default character consistency constraints")
             
             batch_paths = self.sd_client.generate_batch_images(
                 prompt=scene_data['prompt'],

@@ -6,6 +6,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import time
 from datetime import datetime
+from mixtral_client import MixtralClient
 
 class VideoGenerator:
     def __init__(self):
@@ -16,40 +17,24 @@ class VideoGenerator:
         os.makedirs(self.frames_dir, exist_ok=True)
         os.makedirs(self.videos_dir, exist_ok=True)
         
+        # Initialize Mixtral client
+        self.mixtral = MixtralClient()
+        
         logging.info("VideoGenerator initialized")
         logging.info(f"Output directory: {self.output_dir}")
+        
+        # Check Mixtral availability
+        if self.mixtral.check_connection():
+            logging.info("Mixtral LLM connected and ready for prompt enhancement")
+        else:
+            logging.warning("Mixtral LLM unavailable - will use fallback prompt generation")
     
     def analyze_prompt(self, prompt):
-        """Analyze text prompt and extract scenes/narrative elements"""
-        logging.info("Analyzing prompt for narrative structure...")
+        """Analyze text prompt and extract scenes/narrative elements using Mixtral"""
+        logging.info("Analyzing prompt for narrative structure with Mixtral LLM...")
         
-        # Simple scene detection based on sentence boundaries and keywords
-        sentences = re.split(r'[.!?]+', prompt.strip())
-        sentences = [s.strip() for s in sentences if s.strip()]
-        
-        scenes = []
-        scene_keywords = ['then', 'next', 'after', 'suddenly', 'meanwhile', 'later', 'finally']
-        
-        current_scene = []
-        
-        for sentence in sentences:
-            if any(keyword in sentence.lower() for keyword in scene_keywords) and current_scene:
-                # Start new scene
-                scenes.append(' '.join(current_scene))
-                current_scene = [sentence]
-            else:
-                current_scene.append(sentence)
-        
-        if current_scene:
-            scenes.append(' '.join(current_scene))
-        
-        # If no clear scene breaks, split into logical chunks
-        if len(scenes) == 1 and len(sentences) > 3:
-            mid = len(sentences) // 2
-            scenes = [
-                ' '.join(sentences[:mid]),
-                ' '.join(sentences[mid:])
-            ]
+        # Use Mixtral for intelligent scene analysis
+        scenes = self.mixtral.analyze_narrative_structure(prompt)
         
         logging.info(f"Extracted {len(scenes)} scenes from prompt")
         for i, scene in enumerate(scenes):
@@ -58,23 +43,24 @@ class VideoGenerator:
         return scenes
     
     def plan_sequences(self, scenes):
-        """Plan the sequence of still frames needed"""
-        logging.info("Planning frame sequences for scenes...")
+        """Plan the sequence of still frames needed using Mixtral-enhanced prompts"""
+        logging.info("Planning frame sequences with Mixtral-enhanced prompts...")
+        
+        # Use Mixtral to generate enhanced prompts for each scene
+        enhanced_scenes = self.mixtral.generate_scene_prompts(scenes)
         
         scene_plan = []
-        
-        for i, scene in enumerate(scenes):
-            # Extract key visual elements and create frame descriptions
+        for enhanced_scene in enhanced_scenes:
             frame_data = {
-                'scene_id': i + 1,
-                'description': scene,
-                'prompt': self._create_image_prompt(scene),
-                'duration': 3.0,  # seconds per frame
-                'transition_type': 'fade' if i > 0 else 'none'
+                'scene_id': enhanced_scene['scene_id'],
+                'description': enhanced_scene['original_description'],
+                'prompt': enhanced_scene['enhanced_prompt'],
+                'duration': enhanced_scene['duration'],
+                'transition_type': enhanced_scene['transition_type']
             }
             scene_plan.append(frame_data)
             
-            logging.info(f"Planned frame {i+1}: {frame_data['prompt'][:80]}...")
+            logging.info(f"Planned frame {enhanced_scene['scene_id']}: {frame_data['prompt'][:80]}...")
         
         return scene_plan
     

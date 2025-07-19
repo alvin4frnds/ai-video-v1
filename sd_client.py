@@ -47,15 +47,16 @@ class StableDiffusionClient:
     def generate_image(self, prompt: str, output_path: str, **kwargs) -> Optional[str]:
         """Generate image using Stable Diffusion"""
         
-        # Default parameters for high-quality cinematic images
+        # Default parameters optimized for cyberrealistic model
         payload = {
             "prompt": prompt,
             "negative_prompt": "blurry, low quality, distorted, deformed, ugly, bad anatomy, bad hands, text, watermark, signature",
-            "width": kwargs.get("width", 1024),
-            "height": kwargs.get("height", 576),
-            "steps": kwargs.get("steps", 30),
-            "cfg_scale": kwargs.get("cfg_scale", 7.5),
-            "sampler_name": kwargs.get("sampler", "DPM++ 2M Karras"),
+            "width": kwargs.get("width", 512),
+            "height": kwargs.get("height", 768),
+            "steps": kwargs.get("steps", 50),
+            "cfg_scale": kwargs.get("cfg_scale", 7),
+            "sampler_name": kwargs.get("sampler", "DPM++ 2M SDE"),
+            "scheduler": kwargs.get("scheduler", "Karras"),
             "batch_size": 1,
             "n_iter": 1,
             "seed": kwargs.get("seed", -1),

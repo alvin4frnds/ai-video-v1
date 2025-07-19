@@ -24,10 +24,12 @@ The video generator automatically:
 
 ## Default Generation Settings
 
-✅ **Resolution**: 1024x576 (16:9 cinematic)
-✅ **Steps**: 25 (optimized for speed)
-✅ **CFG Scale**: 7.5 (balanced creativity/coherence)
-✅ **Sampler**: DPM++ 2M Karras
+✅ **Resolution**: 512x768 (portrait format)
+✅ **Steps**: 50 (high quality)
+✅ **CFG Scale**: 7 (balanced creativity/coherence)
+✅ **Sampler**: DPM++ 2M SDE
+✅ **Scheduler**: Karras
+✅ **Model**: cyberrealistic_v80.safetensors (automatically selected)
 ✅ **Negative Prompt**: Quality improvements automatically added
 ✅ **Face Restoration**: Enabled for character scenes
 

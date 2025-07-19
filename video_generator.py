@@ -37,6 +37,16 @@ class VideoGenerator:
         if self.sd_client.check_connection():
             current_model = self.sd_client.get_current_model()
             logging.info(f"Stable Diffusion WebUI connected - Model: {current_model}")
+            
+            # Try to set cyberrealistic model as default
+            target_model = "cyberrealistic_v80.safetensors [90389105e4]"
+            if target_model not in str(current_model):
+                logging.info(f"Attempting to switch to preferred model: {target_model}")
+                if self.sd_client.set_model(target_model):
+                    logging.info("Successfully switched to cyberrealistic model")
+                else:
+                    logging.warning("Could not switch to cyberrealistic model, using current model")
+            
             self.use_sd = True
         else:
             logging.warning("Stable Diffusion WebUI unavailable - will use placeholder images")
@@ -104,14 +114,16 @@ class VideoGenerator:
             # Use Stable Diffusion for real image generation
             logging.info("Using Stable Diffusion for image generation")
             
-            # Generate with SD
+            # Generate with SD using optimized settings
             result_path = self.sd_client.generate_image(
                 prompt=scene_data['prompt'],
                 output_path=filepath,
-                width=1024,
-                height=576,
-                steps=25,  # Faster generation for video frames
-                cfg_scale=7.5
+                width=512,
+                height=768,
+                steps=50,
+                cfg_scale=7,
+                sampler="DPM++ 2M SDE",
+                scheduler="Karras"
             )
             
             if result_path:
@@ -124,7 +136,7 @@ class VideoGenerator:
         # Fallback: Create placeholder image with scene text
         logging.info("Generating placeholder image")
         
-        img = Image.new('RGB', (1024, 576), color=(50, 50, 100))
+        img = Image.new('RGB', (512, 768), color=(50, 50, 100))
         draw = ImageDraw.Draw(img)
         
         # Add scene text with sans-serif font
@@ -160,13 +172,13 @@ class VideoGenerator:
         bbox = draw.textbbox((0, 0), text, font=font)
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
-        x = (1024 - text_width) // 2
-        y = (576 - text_height) // 2
+        x = (512 - text_width) // 2
+        y = (768 - text_height) // 2
         
         draw.text((x, y), text, fill=(255, 255, 255), font=font)
         
         # Add frame border
-        draw.rectangle([(10, 10), (1014, 566)], outline=(255, 255, 255), width=3)
+        draw.rectangle([(10, 10), (502, 758)], outline=(255, 255, 255), width=3)
         
         img.save(filepath)
         
@@ -191,8 +203,8 @@ class VideoGenerator:
         frame_duration = 3.0  # seconds per still
         transition_duration = 1.0  # seconds for transition
         
-        # Calculate video dimensions
-        width, height = 1024, 576
+        # Calculate video dimensions (portrait format)
+        width, height = 512, 768
         
         # Initialize video writer
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')

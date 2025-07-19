@@ -154,8 +154,30 @@ def create_still_preview(images):
     
     return []
 
-# Create Gradio interface
-with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome()) as demo:
+# Create Gradio interface with custom CSS for sans-serif fonts
+css = """
+* {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif !important;
+}
+
+.gr-button {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif !important;
+}
+
+.gr-textbox textarea, .gr-textbox input {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif !important;
+}
+
+.gr-markdown {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif !important;
+}
+
+.gr-label {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif !important;
+}
+"""
+
+with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome(), css=css) as demo:
     gr.Markdown("# 🎬 AI Video Generation Pipeline")
     gr.Markdown("Convert text prompts into videos through scene-based generation")
     

@@ -6,9 +6,11 @@ import os
 from PIL import Image
 try:
     from sklearn.cluster import KMeans
+    SKLEARN_AVAILABLE = True
 except ImportError:
     logging.warning("sklearn not available - clothing analysis will use fallback methods")
     KMeans = None
+    SKLEARN_AVAILABLE = False
 
 class FaceAnalyzer:
     """Face detection and analysis for image quality assessment"""
@@ -27,16 +29,37 @@ class FaceAnalyzer:
     def _init_opencv_detector(self):
         """Initialize OpenCV Haar Cascade face detector"""
         try:
-            # Try to load the face cascade
-            cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-            self.face_cascade = cv2.CascadeClassifier(cascade_path)
+            # Try different paths for the face cascade
+            possible_paths = [
+                cv2.data.haarcascades + 'haarcascade_frontalface_default.xml' if hasattr(cv2, 'data') else None,
+                '/usr/share/opencv4/haarcascades/haarcascade_frontalface_default.xml',
+                '/usr/local/share/opencv4/haarcascades/haarcascade_frontalface_default.xml',
+                'haarcascade_frontalface_default.xml'
+            ]
+            
+            # Filter out None values
+            possible_paths = [p for p in possible_paths if p is not None]
+            
+            for cascade_path in possible_paths:
+                try:
+                    self.face_cascade = cv2.CascadeClassifier(cascade_path)
+                    if not self.face_cascade.empty():
+                        logging.info(f"OpenCV face detector initialized with: {cascade_path}")
+                        return
+                except:
+                    continue
+            
+            # If no cascade found, try the built-in one
+            self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml' if hasattr(cv2, 'data') else '')
             if self.face_cascade.empty():
-                logging.warning("OpenCV face cascade not loaded properly")
+                logging.warning("OpenCV face cascade not found - using MediaPipe only")
                 self.face_cascade = None
             else:
-                logging.info("OpenCV face detector initialized")
+                logging.info("OpenCV face detector initialized with built-in cascade")
+                
         except Exception as e:
             logging.warning(f"Failed to initialize OpenCV face detector: {str(e)}")
+            logging.info("Will use MediaPipe for face detection")
             self.face_cascade = None
     
     def _init_mediapipe_detector(self):
@@ -377,25 +400,25 @@ class FaceAnalyzer:
         # Reshape image to be a list of pixels
         pixels = image.reshape(-1, 3)
         
-        # Use k-means clustering to find dominant colors
-        from sklearn.cluster import KMeans
-        
         # Reduce number of pixels for performance
         if len(pixels) > 10000:
             indices = np.random.choice(len(pixels), 10000, replace=False)
             pixels = pixels[indices]
         
-        try:
-            kmeans = KMeans(n_clusters=n_colors, random_state=42, n_init=10)
-            kmeans.fit(pixels)
-            colors = kmeans.cluster_centers_.astype(int)
-            
-            # Convert BGR to RGB and return as list of tuples
-            return [(int(color[2]), int(color[1]), int(color[0])) for color in colors]
-        except:
-            # Fallback: return image mean color
-            mean_color = np.mean(pixels, axis=0).astype(int)
-            return [(int(mean_color[2]), int(mean_color[1]), int(mean_color[0]))]
+        if SKLEARN_AVAILABLE and KMeans is not None:
+            try:
+                kmeans = KMeans(n_clusters=n_colors, random_state=42, n_init=10)
+                kmeans.fit(pixels)
+                colors = kmeans.cluster_centers_.astype(int)
+                
+                # Convert BGR to RGB and return as list of tuples
+                return [(int(color[2]), int(color[1]), int(color[0])) for color in colors]
+            except Exception as e:
+                logging.warning(f"K-means clustering failed: {str(e)}")
+        
+        # Fallback: return image mean color
+        mean_color = np.mean(pixels, axis=0).astype(int)
+        return [(int(mean_color[2]), int(mean_color[1]), int(mean_color[0]))]
     
     def _calculate_clothing_similarity(self, analysis1: Dict, analysis2: Dict) -> float:
         """Calculate similarity between clothing analyses"""

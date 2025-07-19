@@ -608,9 +608,9 @@ class StableDiffusionClient:
         
         # Add ADetailer if available (but less critical with Roop)
         if self.available_adetailer_models:
-            adetailer_args = self._build_adetailer_args()
-            if adetailer_args:
-                payload["alwayson_scripts"]["adetailer"] = {"args": adetailer_args}
+            adetailer_scripts = self._get_adetailer_scripts()
+            if adetailer_scripts:
+                payload["alwayson_scripts"].update(adetailer_scripts)
                 logging.info(f"🔧 ADetailer + Roop combination enabled")
         
         try:

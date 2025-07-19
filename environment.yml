@@ -1,0 +1,22 @@
+name: video-generation
+channels:
+  - conda-forge
+  - pytorch
+  - nvidia
+dependencies:
+  - python=3.10
+  - pip
+  - numpy
+  - opencv
+  - pillow
+  - tqdm
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pytorch-cuda=11.8
+  - pip:
+    - gradio>=4.0.0
+    - diffusers
+    - transformers
+    - accelerate
+    - xformers

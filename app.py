@@ -117,12 +117,20 @@ def create_still_preview(images):
     if not images:
         return []
     
-    preview_data = []
-    for i, img_data in enumerate(images):
-        if os.path.exists(img_data['path']):
-            preview_data.append((img_data['path'], f"Frame {i+1}: {img_data['description'][:100]}..."))
+    # Handle case where images might be a list of dictionaries
+    if isinstance(images, list) and len(images) > 0:
+        if isinstance(images[0], dict):
+            # Extract image paths from dictionaries
+            preview_data = []
+            for i, img_data in enumerate(images):
+                if 'path' in img_data and os.path.exists(img_data['path']):
+                    preview_data.append(img_data['path'])
+            return preview_data
+        else:
+            # Already in correct format
+            return images
     
-    return preview_data
+    return []
 
 # Create Gradio interface
 with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome()) as demo:
@@ -177,14 +185,15 @@ with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome(
     )
     
     # Generate button click handler
+    def handle_generation(prompt):
+        video_path, generated_images, logs = generate_video_pipeline(prompt)
+        gallery_data = create_still_preview(generated_images)
+        return video_path, gallery_data, logs
+    
     generate_btn.click(
-        fn=generate_video_pipeline,
+        fn=handle_generation,
         inputs=[prompt_input],
         outputs=[video_output, still_gallery, logs_output]
-    ).then(
-        fn=create_still_preview,
-        inputs=[still_gallery],
-        outputs=[still_gallery]
     )
 
 if __name__ == "__main__":

@@ -200,6 +200,13 @@ class VideoGenerator:
             logging.info(f"🎲 Scene {scene_id} seed: {scene_seed} (base: {self.base_seed} + scene: {scene_id})")
             logging.info(f"📁 Batch directory: {os.path.basename(batch_dir)}")
             
+            # Log negative prompt usage
+            negative_prompt = scene_data.get('negative_prompt', '')
+            if negative_prompt:
+                logging.info(f"🚫 Single person constraint: {negative_prompt[:60]}...")
+            else:
+                logging.info(f"🚫 Using default single person constraints")
+            
             batch_paths = self.sd_client.generate_batch_images(
                 prompt=scene_data['prompt'],
                 output_dir=batch_dir,
@@ -210,7 +217,8 @@ class VideoGenerator:
                 cfg_scale=7,
                 sampler="DPM++ 2M SDE",
                 scheduler="Karras",
-                seed=scene_seed
+                seed=scene_seed,
+                negative_prompt=scene_data.get('negative_prompt', '')
             )
             
             if batch_paths:

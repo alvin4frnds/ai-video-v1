@@ -61,8 +61,8 @@ class StableDiffusionClient:
         if "face_yolov8n.pt" in self.available_adetailer_models:
             configs.append({
                 "ad_model": "face_yolov8n.pt",
-                "ad_prompt": "perfect face, detailed eyes, clear skin, natural expression, high quality",
-                "ad_negative_prompt": "blurry face, distorted features, bad eyes, deformed face, low quality",
+                "ad_prompt": "single person, perfect face, detailed eyes, clear skin, natural expression, high quality, one person only",
+                "ad_negative_prompt": "blurry face, distorted features, bad eyes, deformed face, low quality, multiple people, crowd, group, two people, extra people",
                 "ad_confidence": 0.3,
                 "ad_mask_merge_invert": "None",
                 "ad_mask_blur": 4,
@@ -80,8 +80,8 @@ class StableDiffusionClient:
         elif "mediapipe_face_full" in self.available_adetailer_models:
             configs.append({
                 "ad_model": "mediapipe_face_full",
-                "ad_prompt": "perfect face, detailed eyes, clear skin, natural expression",
-                "ad_negative_prompt": "blurry face, distorted features, bad eyes, deformed face",
+                "ad_prompt": "single person, perfect face, detailed eyes, clear skin, natural expression, one person only",
+                "ad_negative_prompt": "blurry face, distorted features, bad eyes, deformed face, multiple people, crowd, group, two people",
                 "ad_confidence": 0.5,
                 "ad_mask_blur": 4,
                 "ad_denoising_strength": 0.35,
@@ -96,8 +96,8 @@ class StableDiffusionClient:
         if "hand_yolov8n.pt" in self.available_adetailer_models:
             configs.append({
                 "ad_model": "hand_yolov8n.pt",
-                "ad_prompt": "perfect hands, detailed fingers, natural pose, correct anatomy",
-                "ad_negative_prompt": "deformed hands, bad fingers, extra fingers, missing fingers, blurry hands",
+                "ad_prompt": "single person hands, perfect hands, detailed fingers, natural pose, correct anatomy, one person only",
+                "ad_negative_prompt": "deformed hands, bad fingers, extra fingers, missing fingers, blurry hands, multiple people, other person hands",
                 "ad_confidence": 0.3,
                 "ad_mask_blur": 4,
                 "ad_denoising_strength": 0.5,
@@ -112,8 +112,8 @@ class StableDiffusionClient:
         if "person_yolov8n-seg.pt" in self.available_adetailer_models:
             configs.append({
                 "ad_model": "person_yolov8n-seg.pt",
-                "ad_prompt": "high quality person, detailed features, natural proportions",
-                "ad_negative_prompt": "low quality, distorted proportions, blurry",
+                "ad_prompt": "single person, high quality person, detailed features, natural proportions, one person only",
+                "ad_negative_prompt": "low quality, distorted proportions, blurry, multiple people, crowd, group, two people, additional person",
                 "ad_confidence": 0.3,
                 "ad_mask_blur": 4,
                 "ad_denoising_strength": 0.3,
@@ -126,8 +126,8 @@ class StableDiffusionClient:
         elif "yolov8x-worldv2.pt" in self.available_adetailer_models:
             configs.append({
                 "ad_model": "yolov8x-worldv2.pt",
-                "ad_prompt": "person, high quality, detailed features",
-                "ad_negative_prompt": "low quality, blurry",
+                "ad_prompt": "single person, high quality, detailed features, one person only",
+                "ad_negative_prompt": "low quality, blurry, multiple people, crowd, group, two people",
                 "ad_confidence": 0.3,
                 "ad_mask_blur": 4,
                 "ad_denoising_strength": 0.25,
@@ -267,10 +267,16 @@ class StableDiffusionClient:
     def _generate_batch(self, prompt: str, output_dir: str, batch_size: int, batch_num: int, **kwargs) -> List[str]:
         """Generate a single batch of images"""
         
+        # Get negative prompt from kwargs or use default
+        negative_prompt = kwargs.get("negative_prompt", "blurry, low quality, distorted, deformed, ugly, bad anatomy, bad hands, text, watermark, signature")
+        
+        # Enhance negative prompt with single person constraints
+        enhanced_negative_prompt = f"{negative_prompt}, multiple people, crowd, group, two people, three people, many people, other person, additional person, background people, extra people, duplicate person"
+        
         # Default parameters optimized for cyberrealistic model with ADetailer
         payload = {
             "prompt": prompt,
-            "negative_prompt": "blurry, low quality, distorted, deformed, ugly, bad anatomy, bad hands, text, watermark, signature",
+            "negative_prompt": enhanced_negative_prompt,
             "width": kwargs.get("width", 512),
             "height": kwargs.get("height", 768),
             "steps": kwargs.get("steps", 28),
@@ -291,6 +297,7 @@ class StableDiffusionClient:
         
         logging.info(f"⚙️  Batch {batch_num + 1} settings: {payload['width']}x{payload['height']}, {payload['steps']} steps, CFG={payload['cfg_scale']}")
         logging.info(f"🎲 Seed: {payload['seed']}, Sampler: {payload['sampler_name']}")
+        logging.info(f"👤 Single person constraint enforced in negative prompt")
         
         # Log ADetailer status
         if self.available_adetailer_models:
@@ -300,14 +307,14 @@ class StableDiffusionClient:
             person_models = [m for m in self.available_adetailer_models if 'person' in m.lower() or 'yolov8x' in m.lower()]
             
             enhancements = []
-            if face_models: enhancements.append("Face fixing")
-            if hand_models: enhancements.append("Hand fixing") 
-            if person_models: enhancements.append("Person refinement")
+            if face_models: enhancements.append("Single person face fixing")
+            if hand_models: enhancements.append("Single person hand fixing") 
+            if person_models: enhancements.append("Single person refinement")
             
             if enhancements:
                 logging.info(f"✨ Quality enhancements: {', '.join(enhancements)}")
         else:
-            logging.info(f"ℹ️  ADetailer not available - using standard generation")
+            logging.info(f"ℹ️  ADetailer not available - using standard generation with single person constraints")
         
         try:
             logging.info(f"📡 Sending request to SD WebUI...")
@@ -376,10 +383,16 @@ class StableDiffusionClient:
     def generate_image(self, prompt: str, output_path: str, **kwargs) -> Optional[str]:
         """Generate image using Stable Diffusion with ADetailer"""
         
+        # Get negative prompt from kwargs or use default
+        negative_prompt = kwargs.get("negative_prompt", "blurry, low quality, distorted, deformed, ugly, bad anatomy, bad hands, text, watermark, signature")
+        
+        # Enhance negative prompt with single person constraints
+        enhanced_negative_prompt = f"{negative_prompt}, multiple people, crowd, group, two people, three people, many people, other person, additional person, background people, extra people, duplicate person"
+        
         # Default parameters optimized for cyberrealistic model with ADetailer
         payload = {
             "prompt": prompt,
-            "negative_prompt": "blurry, low quality, distorted, deformed, ugly, bad anatomy, bad hands, text, watermark, signature",
+            "negative_prompt": enhanced_negative_prompt,
             "width": kwargs.get("width", 512),
             "height": kwargs.get("height", 768),
             "steps": kwargs.get("steps", 28),

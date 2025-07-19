@@ -46,42 +46,70 @@ class MixtralClient:
             system_prompt = """You are an expert at creating detailed, visual prompts for AI image generation. 
 Your task is to convert scene descriptions into highly detailed, cinematic image prompts that will create stunning visuals.
 
+IMPORTANT CONSTRAINTS:
+- ALWAYS limit to EXACTLY ONE PERSON in the scene
+- Add negative prompts to prevent multiple people
+- Focus on single character scenarios only
+
 Focus on:
-- Visual composition and camera angles
+- Visual composition and camera angles for ONE person
 - Lighting and atmosphere
 - Color palette and mood
-- Character details and expressions
+- Single character details and expressions
 - Environmental details
 - Artistic style
 
-Keep prompts concise but descriptive (max 150 words)."""
+Respond in this JSON format:
+{
+  "positive_prompt": "detailed positive prompt here (max 150 words)",
+  "negative_prompt": "multiple people, crowd, group, two people, three people, many people, other person, additional person, background people, extra people, duplicate person"
+}
+
+Keep prompts concise but descriptive."""
             
-            user_prompt = f"""Convert this scene into a detailed image generation prompt:
+            user_prompt = f"""Convert this scene into a detailed image generation prompt with negative prompts:
 
 Scene: {scene}
 
-Create a cinematic, detailed prompt that an AI image generator can use to create a compelling visual representation of this scene."""
+Create a cinematic, detailed prompt for EXACTLY ONE PERSON that an AI image generator can use. Include comprehensive negative prompts to prevent multiple people from appearing.
+
+Respond with JSON containing both positive_prompt and negative_prompt fields."""
             
             try:
-                enhanced_prompt = self._call_mixtral(system_prompt, user_prompt)
+                response = self._call_mixtral(system_prompt, user_prompt)
+                
+                # Try to parse JSON response
+                try:
+                    prompt_data = json.loads(response)
+                    positive_prompt = prompt_data.get('positive_prompt', response)
+                    negative_prompt = prompt_data.get('negative_prompt', 'multiple people, crowd, group, two people, three people, many people')
+                except json.JSONDecodeError:
+                    # Fallback if not JSON
+                    positive_prompt = response
+                    negative_prompt = 'multiple people, crowd, group, two people, three people, many people, other person, additional person, background people, extra people, duplicate person'
                 
                 enhanced_scenes.append({
                     'scene_id': i + 1,
                     'original_description': scene,
-                    'enhanced_prompt': enhanced_prompt,
+                    'enhanced_prompt': positive_prompt,
+                    'negative_prompt': negative_prompt,
                     'duration': 3.0,
                     'transition_type': 'fade' if i > 0 else 'none'
                 })
                 
                 logging.info(f"Generated enhanced prompt for scene {i+1}")
+                logging.info(f"  Positive: {positive_prompt[:80]}...")
+                logging.info(f"  Negative: {negative_prompt[:80]}...")
                 
             except Exception as e:
                 logging.error(f"Failed to generate prompt for scene {i+1}: {str(e)}")
                 # Fallback to basic prompt enhancement
+                fallback_data = self._fallback_prompt_enhancement(scene)
                 enhanced_scenes.append({
                     'scene_id': i + 1,
                     'original_description': scene,
-                    'enhanced_prompt': self._fallback_prompt_enhancement(scene),
+                    'enhanced_prompt': fallback_data['positive_prompt'],
+                    'negative_prompt': fallback_data['negative_prompt'],
                     'duration': 3.0,
                     'transition_type': 'fade' if i > 0 else 'none'
                 })
@@ -117,24 +145,33 @@ Create a cinematic, detailed prompt that an AI image generator can use to create
         else:
             raise Exception(f"Mixtral API error: {response.status_code} - {response.text}")
     
-    def _fallback_prompt_enhancement(self, scene: str) -> str:
+    def _fallback_prompt_enhancement(self, scene: str) -> Dict[str, str]:
         """Fallback prompt enhancement when Mixtral is unavailable"""
         logging.warning("Using fallback prompt enhancement")
         
+        # Ensure single person language
+        scene_single = scene.replace(" people ", " person ").replace(" they ", " she ").replace(" them ", " her ")
+        
         # Basic enhancement with common cinematic descriptors
-        enhanced = f"{scene}, cinematic lighting, high quality, detailed, professional photography, 4k resolution, dramatic composition, vivid colors"
+        positive_prompt = f"single person, {scene_single}, one person only, cinematic lighting, high quality, detailed, professional photography, 4k resolution, dramatic composition, vivid colors"
         
         # Add style based on scene content
         if any(word in scene.lower() for word in ['night', 'dark', 'shadow']):
-            enhanced += ", moody atmosphere, dramatic shadows"
+            positive_prompt += ", moody atmosphere, dramatic shadows"
         elif any(word in scene.lower() for word in ['day', 'bright', 'sun']):
-            enhanced += ", bright lighting, clear sky, vibrant colors"
+            positive_prompt += ", bright lighting, clear sky, vibrant colors"
         elif any(word in scene.lower() for word in ['forest', 'nature', 'tree']):
-            enhanced += ", natural lighting, lush greenery, organic textures"
+            positive_prompt += ", natural lighting, lush greenery, organic textures"
         elif any(word in scene.lower() for word in ['city', 'urban', 'building']):
-            enhanced += ", urban environment, architectural details, street photography"
+            positive_prompt += ", urban environment, architectural details, street photography"
         
-        return enhanced
+        # Comprehensive negative prompt for single person constraint
+        negative_prompt = "multiple people, crowd, group, two people, three people, many people, other person, additional person, background people, extra people, duplicate person, several people, couple, pair, twins, family, team, friends, strangers, bystanders"
+        
+        return {
+            'positive_prompt': positive_prompt,
+            'negative_prompt': negative_prompt
+        }
     
     def analyze_narrative_structure(self, prompt: str) -> List[str]:
         """Use Mixtral to analyze narrative and extract optimal scene breaks"""

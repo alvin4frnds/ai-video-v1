@@ -29,7 +29,7 @@ The video generator automatically:
 ## Default Generation Settings
 
 ✅ **Resolution**: 512x768 (portrait format)
-✅ **Steps**: 50 (high quality)
+✅ **Steps**: 28 (optimized quality/speed balance)
 ✅ **CFG Scale**: 7 (balanced creativity/coherence)
 ✅ **Sampler**: DPM++ 2M SDE
 ✅ **Scheduler**: Karras

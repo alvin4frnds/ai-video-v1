@@ -86,7 +86,7 @@ class StableDiffusionClient:
             "negative_prompt": "blurry, low quality, distorted, deformed, ugly, bad anatomy, bad hands, text, watermark, signature",
             "width": kwargs.get("width", 512),
             "height": kwargs.get("height", 768),
-            "steps": kwargs.get("steps", 50),
+            "steps": kwargs.get("steps", 28),
             "cfg_scale": kwargs.get("cfg_scale", 7),
             "sampler_name": kwargs.get("sampler", "DPM++ 2M SDE"),
             "scheduler": kwargs.get("scheduler", "Karras"),

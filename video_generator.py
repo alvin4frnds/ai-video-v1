@@ -198,7 +198,7 @@ class VideoGenerator:
                     output_path=filepath,
                     width=512,
                     height=768,
-                    steps=50,
+                    steps=28,
                     cfg_scale=7,
                     sampler="DPM++ 2M SDE",
                     scheduler="Karras",

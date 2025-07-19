@@ -7,6 +7,7 @@ from PIL import Image, ImageDraw, ImageFont
 import time
 from datetime import datetime
 from mixtral_client import MixtralClient
+from sd_client import StableDiffusionClient
 
 class VideoGenerator:
     def __init__(self):
@@ -20,6 +21,9 @@ class VideoGenerator:
         # Initialize Mixtral client
         self.mixtral = MixtralClient()
         
+        # Initialize Stable Diffusion client
+        self.sd_client = StableDiffusionClient()
+        
         logging.info("VideoGenerator initialized")
         logging.info(f"Output directory: {self.output_dir}")
         
@@ -28,6 +32,15 @@ class VideoGenerator:
             logging.info("Mixtral LLM connected and ready for prompt enhancement")
         else:
             logging.warning("Mixtral LLM unavailable - will use fallback prompt generation")
+        
+        # Check Stable Diffusion availability
+        if self.sd_client.check_connection():
+            current_model = self.sd_client.get_current_model()
+            logging.info(f"Stable Diffusion WebUI connected - Model: {current_model}")
+            self.use_sd = True
+        else:
+            logging.warning("Stable Diffusion WebUI unavailable - will use placeholder images")
+            self.use_sd = False
     
     def analyze_prompt(self, prompt):
         """Analyze text prompt and extract scenes/narrative elements using Mixtral"""
@@ -80,17 +93,37 @@ class VideoGenerator:
         return enhanced_prompt
     
     def generate_image(self, scene_data):
-        """Generate image for a scene (placeholder implementation)"""
+        """Generate image for a scene using Stable Diffusion or placeholder"""
         logging.info(f"Generating image for scene {scene_data['scene_id']}")
-        
-        # For now, create a placeholder image with scene text
-        # In production, this would call an AI image generation API
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"frame_{scene_data['scene_id']:03d}_{timestamp}.png"
         filepath = os.path.join(self.frames_dir, filename)
         
-        # Create placeholder image
+        if self.use_sd:
+            # Use Stable Diffusion for real image generation
+            logging.info("Using Stable Diffusion for image generation")
+            
+            # Generate with SD
+            result_path = self.sd_client.generate_image(
+                prompt=scene_data['prompt'],
+                output_path=filepath,
+                width=1024,
+                height=576,
+                steps=25,  # Faster generation for video frames
+                cfg_scale=7.5
+            )
+            
+            if result_path:
+                logging.info(f"SD image generated successfully: {filepath}")
+                return result_path
+            else:
+                logging.warning("SD generation failed, falling back to placeholder")
+                # Fall through to placeholder generation
+        
+        # Fallback: Create placeholder image with scene text
+        logging.info("Generating placeholder image")
+        
         img = Image.new('RGB', (1024, 576), color=(50, 50, 100))
         draw = ImageDraw.Draw(img)
         
@@ -139,8 +172,9 @@ class VideoGenerator:
         
         logging.info(f"Generated placeholder image: {filepath}")
         
-        # Simulate processing time
-        time.sleep(2)
+        # Simulate processing time for consistency
+        if not self.use_sd:
+            time.sleep(2)
         
         return filepath
     

@@ -8,6 +8,7 @@ from io import StringIO
 import queue
 import os
 import random
+import shutil
 
 from video_generator import VideoGenerator
 
@@ -176,6 +177,89 @@ def create_still_preview(images):
     
     return []
 
+def clean_output_folder():
+    """Clean the output folder and return status message"""
+    try:
+        output_dir = "output"
+        
+        # Count files before cleaning
+        total_files = 0
+        total_size = 0
+        video_count = 0
+        frame_count = 0
+        batch_dirs = 0
+        
+        for root, dirs, files in os.walk(output_dir):
+            for file in files:
+                if file != '.gitkeep':  # Don't count .gitkeep
+                    file_path = os.path.join(root, file)
+                    total_files += 1
+                    total_size += os.path.getsize(file_path)
+                    
+                    # Count by type
+                    if file.endswith(('.mp4', '.avi', '.mov')):
+                        video_count += 1
+                    elif file.endswith(('.png', '.jpg', '.jpeg')):
+                        frame_count += 1
+            
+            # Count batch directories
+            for dir_name in dirs:
+                if dir_name.startswith('batch_scene_'):
+                    batch_dirs += 1
+        
+        if total_files == 0:
+            logging.info("🧹 Output folder is already clean")
+            return "✅ Output folder is already clean - no files to remove", None, []
+        
+        logging.info(f"🧹 Starting cleanup: {total_files} files, {video_count} videos, {frame_count} images, {batch_dirs} batch dirs")
+        
+        # Clean the folders
+        frames_dir = os.path.join(output_dir, "frames")
+        videos_dir = os.path.join(output_dir, "videos")
+        
+        # Remove all contents except .gitkeep
+        removed_files = 0
+        removed_dirs = 0
+        
+        for root, dirs, files in os.walk(output_dir, topdown=False):
+            for file in files:
+                if file != '.gitkeep':
+                    file_path = os.path.join(root, file)
+                    os.remove(file_path)
+                    removed_files += 1
+            
+            for dir_name in dirs:
+                dir_path = os.path.join(root, dir_name)
+                if dir_name not in ['frames', 'videos'] and os.path.exists(dir_path):
+                    try:
+                        # Check if directory is empty (except for subdirs we want to keep)
+                        if not any(os.listdir(dir_path)) or dir_name.startswith('batch_scene_'):
+                            shutil.rmtree(dir_path)
+                            removed_dirs += 1
+                    except OSError:
+                        pass  # Directory might not be empty or have permission issues
+        
+        # Convert size to human readable
+        if total_size >= 1024 * 1024:
+            size_str = f"{total_size / (1024 * 1024):.1f} MB"
+        elif total_size >= 1024:
+            size_str = f"{total_size / 1024:.1f} KB"
+        else:
+            size_str = f"{total_size} bytes"
+        
+        message = f"🧹 Cleanup complete: {removed_files} files removed ({size_str} freed)"
+        if removed_dirs > 0:
+            message += f", {removed_dirs} directories removed"
+        
+        logging.info(message)
+        
+        return message, None, []
+        
+    except Exception as e:
+        error_msg = f"❌ Error cleaning output folder: {str(e)}"
+        logging.error(error_msg)
+        return error_msg, None, []
+
 # Create Gradio interface with custom CSS for sans-serif fonts
 css = """
 * {
@@ -213,6 +297,7 @@ with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome(
             with gr.Row():
                 generate_btn = gr.Button("🚀 Generate Video", variant="primary", size="lg")
                 random_btn = gr.Button("🎲 Random Test", variant="secondary", size="sm")
+                clean_btn = gr.Button("🧹 Clean Output", variant="secondary", size="sm")
         
         with gr.Column(scale=1):
             progress_display = gr.Textbox(
@@ -275,6 +360,12 @@ with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome(
     random_btn.click(
         fn=handle_random_test,
         outputs=[prompt_input, video_output, still_gallery, logs_output]
+    )
+    
+    # Clean button click handler
+    clean_btn.click(
+        fn=clean_output_folder,
+        outputs=[progress_display, video_output, still_gallery]
     )
 
 if __name__ == "__main__":

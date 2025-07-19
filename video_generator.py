@@ -21,8 +21,8 @@ class VideoGenerator:
         # Initialize Mixtral client
         self.mixtral = MixtralClient()
         
-        # Initialize Stable Diffusion client
-        self.sd_client = StableDiffusionClient()
+        # Initialize Stable Diffusion client with network IP
+        self.sd_client = StableDiffusionClient(base_url="http://192.168.0.199:8001")
         
         logging.info("VideoGenerator initialized")
         logging.info(f"Output directory: {self.output_dir}")

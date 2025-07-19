@@ -13,12 +13,16 @@
    
    # Or on Windows
    webui-user.bat --api --port 8001
+   
+   # For network access (if running on different machine)
+   ./webui.sh --api --port 8001 --listen
    ```
 
 ## Configuration
 
 The video generator automatically:
-- Connects to SD WebUI at `http://localhost:8001`
+- Connects to SD WebUI at `http://192.168.0.199:8001` (configured for your network)
+- Auto-detects SD WebUI on common ports and IPs if needed
 - Uses optimized settings for video frame generation
 - Falls back to placeholder images if SD unavailable
 

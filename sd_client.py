@@ -16,23 +16,28 @@ class StableDiffusionClient:
         logging.info(f"Initialized Stable Diffusion client with base URL: {base_url}")
     
     def find_sd_webui(self) -> Optional[str]:
-        """Try to find SD WebUI on common ports"""
+        """Try to find SD WebUI on common ports and IPs"""
+        # Common ports to check
         common_ports = [8001, 7860, 7861, 8000, 8080]
-        logging.info("🔍 Searching for SD WebUI on common ports...")
+        # Common IPs to check (localhost and common network IPs)
+        common_ips = ["localhost", "127.0.0.1", "192.168.0.199"]
         
-        for port in common_ports:
-            test_url = f"http://localhost:{port}"
-            try:
-                response = self.session.get(f"{test_url}/sdapi/v1/options", timeout=3)
-                if response.status_code == 200:
-                    logging.info(f"✅ Found SD WebUI at {test_url}")
-                    return test_url
-                else:
-                    logging.debug(f"❌ Port {port} responded but not SD WebUI")
-            except:
-                logging.debug(f"❌ Port {port} not accessible")
+        logging.info("🔍 Searching for SD WebUI on common ports and IPs...")
         
-        logging.warning("❌ SD WebUI not found on any common ports")
+        for ip in common_ips:
+            for port in common_ports:
+                test_url = f"http://{ip}:{port}"
+                try:
+                    response = self.session.get(f"{test_url}/sdapi/v1/options", timeout=3)
+                    if response.status_code == 200:
+                        logging.info(f"✅ Found SD WebUI at {test_url}")
+                        return test_url
+                    else:
+                        logging.debug(f"❌ {test_url} responded but not SD WebUI")
+                except:
+                    logging.debug(f"❌ {test_url} not accessible")
+        
+        logging.warning("❌ SD WebUI not found on any common locations")
         return None
     
     def check_connection(self) -> bool:

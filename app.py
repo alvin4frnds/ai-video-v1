@@ -7,6 +7,7 @@ import sys
 from io import StringIO
 import queue
 import os
+import random
 
 from video_generator import VideoGenerator
 
@@ -49,8 +50,25 @@ class QueueHandler(logging.Handler):
 
 log_capture = LogCapture()
 
+def generate_random_test_prompt():
+    """Generate a random test prompt for empty input"""
+    colors = ["red", "blue", "green", "yellow", "purple", "pink", "black", "white", "orange", "brown", "gray"]
+    locations = ["sidewalk", "street", "park", "mall", "market"]
+    
+    color = random.choice(colors)
+    location = random.choice(locations)
+    
+    prompt = f"woman wearing {color} walking {location}"
+    logging.info(f"Generated random test prompt: {prompt}")
+    return prompt
+
 def generate_video_pipeline(prompt, progress=gr.Progress()):
     """Main video generation pipeline with progress tracking"""
+    
+    # Check if prompt is empty and generate random test prompt
+    if not prompt or prompt.strip() == "":
+        prompt = generate_random_test_prompt()
+        logging.info("Empty prompt detected, using random test prompt")
     
     generator = VideoGenerator()
     
@@ -141,10 +159,12 @@ with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome(
         with gr.Column(scale=2):
             prompt_input = gr.Textbox(
                 label="Text Prompt",
-                placeholder="Enter your story or scene description...",
+                placeholder="Enter your story or scene description... (leave empty for random test)",
                 lines=4
             )
-            generate_btn = gr.Button("🚀 Generate Video", variant="primary", size="lg")
+            with gr.Row():
+                generate_btn = gr.Button("🚀 Generate Video", variant="primary", size="lg")
+                random_btn = gr.Button("🎲 Random Test", variant="secondary", size="sm")
         
         with gr.Column(scale=1):
             progress_display = gr.Textbox(
@@ -190,10 +210,23 @@ with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome(
         gallery_data = create_still_preview(generated_images)
         return video_path, gallery_data, logs
     
+    # Generate button click handler
     generate_btn.click(
         fn=handle_generation,
         inputs=[prompt_input],
         outputs=[video_output, still_gallery, logs_output]
+    )
+    
+    # Random test button click handler
+    def handle_random_test():
+        random_prompt = generate_random_test_prompt()
+        video_path, generated_images, logs = generate_video_pipeline(random_prompt)
+        gallery_data = create_still_preview(generated_images)
+        return random_prompt, video_path, gallery_data, logs
+    
+    random_btn.click(
+        fn=handle_random_test,
+        outputs=[prompt_input, video_output, still_gallery, logs_output]
     )
 
 if __name__ == "__main__":

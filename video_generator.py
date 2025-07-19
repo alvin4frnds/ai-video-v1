@@ -289,12 +289,38 @@ class VideoGenerator:
         # Calculate video dimensions (portrait format)
         width, height = 512, 768
         
-        # Initialize video writer
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        # Initialize video writer with H.264 codec for browser compatibility
+        fourcc = cv2.VideoWriter_fourcc(*'H264')
         out = cv2.VideoWriter(video_path, fourcc, fps, (width, height))
         
+        # Fallback to other codecs if H264 fails
+        if not out.isOpened():
+            logging.warning("H264 codec failed, trying mp4v...")
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            out = cv2.VideoWriter(video_path, fourcc, fps, (width, height))
+            
+        if not out.isOpened():
+            logging.warning("mp4v codec failed, trying XVID...")
+            fourcc = cv2.VideoWriter_fourcc(*'XVID')
+            video_path = video_path.replace('.mp4', '.avi')  # XVID typically uses AVI
+            out = cv2.VideoWriter(video_path, fourcc, fps, (width, height))
+        
+        if not out.isOpened():
+            logging.error("Failed to initialize video writer with any codec!")
+            return None
+            
+        # Detect which codec was used
+        if 'H264' in str(fourcc):
+            codec_name = "H.264"
+        elif 'mp4v' in str(fourcc):
+            codec_name = "MPEG-4"
+        elif 'XVID' in str(fourcc):
+            codec_name = "XVID"
+        else:
+            codec_name = "Unknown"
+            
         logging.info(f"Creating video: {video_path}")
-        logging.info(f"Video settings: {width}x{height} @ {fps}fps")
+        logging.info(f"Video settings: {width}x{height} @ {fps}fps using {codec_name} codec")
         
         for i, img_data in enumerate(image_data):
             logging.info(f"Processing frame {i+1}/{len(image_data)}")
@@ -348,5 +374,28 @@ class VideoGenerator:
         
         out.release()
         logging.info(f"Video creation complete: {video_path}")
+        
+        # If we used H264, the video should be browser-compatible
+        # If we used mp4v or XVID, try to convert with ffmpeg for better compatibility
+        if codec_name != "H.264" and video_path.endswith('.mp4'):
+            logging.info("Attempting to convert video to H.264 for better browser compatibility...")
+            h264_path = video_path.replace('.mp4', '_h264.mp4')
+            
+            try:
+                import subprocess
+                result = subprocess.run([
+                    'ffmpeg', '-i', video_path, '-c:v', 'libx264', 
+                    '-preset', 'fast', '-crf', '23', '-y', h264_path
+                ], capture_output=True, text=True, timeout=60)
+                
+                if result.returncode == 0:
+                    logging.info(f"Successfully converted to H.264: {h264_path}")
+                    os.remove(video_path)  # Remove original
+                    return h264_path
+                else:
+                    logging.warning(f"ffmpeg conversion failed: {result.stderr}")
+                    
+            except (subprocess.TimeoutExpired, FileNotFoundError, Exception) as e:
+                logging.warning(f"Could not convert with ffmpeg: {str(e)}")
         
         return video_path

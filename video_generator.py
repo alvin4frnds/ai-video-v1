@@ -1,0 +1,196 @@
+import os
+import re
+import logging
+import cv2
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+import time
+from datetime import datetime
+
+class VideoGenerator:
+    def __init__(self):
+        self.output_dir = "output"
+        self.frames_dir = os.path.join(self.output_dir, "frames")
+        self.videos_dir = os.path.join(self.output_dir, "videos")
+        
+        os.makedirs(self.frames_dir, exist_ok=True)
+        os.makedirs(self.videos_dir, exist_ok=True)
+        
+        logging.info("VideoGenerator initialized")
+        logging.info(f"Output directory: {self.output_dir}")
+    
+    def analyze_prompt(self, prompt):
+        """Analyze text prompt and extract scenes/narrative elements"""
+        logging.info("Analyzing prompt for narrative structure...")
+        
+        # Simple scene detection based on sentence boundaries and keywords
+        sentences = re.split(r'[.!?]+', prompt.strip())
+        sentences = [s.strip() for s in sentences if s.strip()]
+        
+        scenes = []
+        scene_keywords = ['then', 'next', 'after', 'suddenly', 'meanwhile', 'later', 'finally']
+        
+        current_scene = []
+        
+        for sentence in sentences:
+            if any(keyword in sentence.lower() for keyword in scene_keywords) and current_scene:
+                # Start new scene
+                scenes.append(' '.join(current_scene))
+                current_scene = [sentence]
+            else:
+                current_scene.append(sentence)
+        
+        if current_scene:
+            scenes.append(' '.join(current_scene))
+        
+        # If no clear scene breaks, split into logical chunks
+        if len(scenes) == 1 and len(sentences) > 3:
+            mid = len(sentences) // 2
+            scenes = [
+                ' '.join(sentences[:mid]),
+                ' '.join(sentences[mid:])
+            ]
+        
+        logging.info(f"Extracted {len(scenes)} scenes from prompt")
+        for i, scene in enumerate(scenes):
+            logging.info(f"Scene {i+1}: {scene[:100]}...")
+        
+        return scenes
+    
+    def plan_sequences(self, scenes):
+        """Plan the sequence of still frames needed"""
+        logging.info("Planning frame sequences for scenes...")
+        
+        scene_plan = []
+        
+        for i, scene in enumerate(scenes):
+            # Extract key visual elements and create frame descriptions
+            frame_data = {
+                'scene_id': i + 1,
+                'description': scene,
+                'prompt': self._create_image_prompt(scene),
+                'duration': 3.0,  # seconds per frame
+                'transition_type': 'fade' if i > 0 else 'none'
+            }
+            scene_plan.append(frame_data)
+            
+            logging.info(f"Planned frame {i+1}: {frame_data['prompt'][:80]}...")
+        
+        return scene_plan
+    
+    def _create_image_prompt(self, scene_description):
+        """Convert scene description to optimized image generation prompt"""
+        # Add visual style and quality descriptors
+        base_prompt = scene_description
+        
+        # Add style modifiers for better image generation
+        style_additions = [
+            "high quality, detailed, cinematic lighting",
+            "professional photography, 4k resolution",
+            "dramatic composition, vivid colors"
+        ]
+        
+        enhanced_prompt = f"{base_prompt}, {', '.join(style_additions)}"
+        return enhanced_prompt
+    
+    def generate_image(self, scene_data):
+        """Generate image for a scene (placeholder implementation)"""
+        logging.info(f"Generating image for scene {scene_data['scene_id']}")
+        
+        # For now, create a placeholder image with scene text
+        # In production, this would call an AI image generation API
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"frame_{scene_data['scene_id']:03d}_{timestamp}.png"
+        filepath = os.path.join(self.frames_dir, filename)
+        
+        # Create placeholder image
+        img = Image.new('RGB', (1024, 576), color=(50, 50, 100))
+        draw = ImageDraw.Draw(img)
+        
+        # Add scene text
+        try:
+            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
+        except:
+            font = ImageFont.load_default()
+        
+        # Wrap text
+        text = f"Scene {scene_data['scene_id']}\n\n{scene_data['description'][:200]}..."
+        
+        # Calculate text position
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+        x = (1024 - text_width) // 2
+        y = (576 - text_height) // 2
+        
+        draw.text((x, y), text, fill=(255, 255, 255), font=font)
+        
+        # Add frame border
+        draw.rectangle([(10, 10), (1014, 566)], outline=(255, 255, 255), width=3)
+        
+        img.save(filepath)
+        
+        logging.info(f"Generated placeholder image: {filepath}")
+        
+        # Simulate processing time
+        time.sleep(2)
+        
+        return filepath
+    
+    def create_video_with_transitions(self, image_data):
+        """Create video with transitions between still frames"""
+        logging.info("Creating video with transitions...")
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        video_filename = f"generated_video_{timestamp}.mp4"
+        video_path = os.path.join(self.videos_dir, video_filename)
+        
+        # Video settings
+        fps = 30
+        frame_duration = 3.0  # seconds per still
+        transition_duration = 1.0  # seconds for transition
+        
+        # Calculate video dimensions
+        width, height = 1024, 576
+        
+        # Initialize video writer
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(video_path, fourcc, fps, (width, height))
+        
+        logging.info(f"Creating video: {video_path}")
+        logging.info(f"Video settings: {width}x{height} @ {fps}fps")
+        
+        for i, img_data in enumerate(image_data):
+            logging.info(f"Processing frame {i+1}/{len(image_data)}")
+            
+            # Load image
+            img = cv2.imread(img_data['path'])
+            if img is None:
+                logging.error(f"Could not load image: {img_data['path']}")
+                continue
+            
+            img = cv2.resize(img, (width, height))
+            
+            # Add still frame (hold for duration)
+            still_frames = int(frame_duration * fps)
+            for _ in range(still_frames):
+                out.write(img)
+            
+            # Add transition to next frame (except for last frame)
+            if i < len(image_data) - 1:
+                next_img = cv2.imread(image_data[i + 1]['path'])
+                if next_img is not None:
+                    next_img = cv2.resize(next_img, (width, height))
+                    
+                    # Create fade transition
+                    transition_frames = int(transition_duration * fps)
+                    for frame_num in range(transition_frames):
+                        alpha = frame_num / transition_frames
+                        blended = cv2.addWeighted(img, 1 - alpha, next_img, alpha, 0)
+                        out.write(blended)
+        
+        out.release()
+        logging.info(f"Video creation complete: {video_path}")
+        
+        return video_path

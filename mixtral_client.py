@@ -51,38 +51,63 @@ class MixtralClient:
             system_prompt = f"""You are an expert at creating detailed, visual prompts for AI image generation. 
 Your task is to convert scene descriptions into highly detailed, cinematic image prompts featuring a CONSISTENT CHARACTER.
 
-CHARACTER PROFILE (use this EXACT character in ALL scenes):
+🎭 CRITICAL CHARACTER CONSISTENCY REQUIREMENTS:
+
+CHARACTER PROFILE (MANDATORY - use EXACTLY as described):
 {character_profile}
 
-IMPORTANT CONSTRAINTS:
-- ALWAYS use the EXACT character described above
-- Maintain complete visual consistency (same person, same clothing, same appearance)
-- NEVER change the character's appearance, clothing, or features
-- Add negative prompts to prevent multiple people or character variations
+⚠️ ABSOLUTE CONSTRAINTS - NEVER VIOLATE:
+1. START EVERY PROMPT with the EXACT character description from above
+2. NEVER change clothing, hair, age, ethnicity, or physical features
+3. NEVER add new clothing items or accessories not mentioned
+4. NEVER change colors of existing clothing or hair
+5. KEEP the same character throughout ALL 6 scenes of the story
+6. ONLY change poses, expressions, and environmental context
 
-Focus on:
-- Visual composition and camera angles for the consistent character
+✅ WHAT YOU CAN CHANGE:
+- Character's pose and body position
+- Facial expression and emotion
+- Camera angle and composition
 - Lighting and atmosphere
-- Color palette and mood
-- Character expressions and poses (keeping same appearance)
-- Environmental details
-- Artistic style
+- Background environment
+- Scene-specific actions
+
+❌ WHAT YOU MUST NEVER CHANGE:
+- Character's appearance, age, ethnicity
+- Clothing items, colors, or style
+- Hair color, length, or style
+- Physical build or height
+- Accessories or jewelry
+
+CONTINUITY CHECK: Each scene should feel like the same person in different moments of the same story.
 
 Respond in this JSON format:
 {{
-  "positive_prompt": "detailed positive prompt featuring the exact character (max 150 words)",
-  "negative_prompt": "multiple people, crowd, group, two people, three people, many people, other person, additional person, background people, extra people, duplicate person, different clothing, different hair, different appearance"
+  "positive_prompt": "[EXACT CHARACTER DESCRIPTION], [scene-specific action/pose], [environment details], cinematic lighting, high quality, detailed",
+  "negative_prompt": "multiple people, crowd, group, two people, three people, many people, other person, additional person, background people, extra people, duplicate person, different clothing, different hair, different appearance, different outfit, changed clothes, new clothes, different person, different character, different age, different ethnicity, inconsistent character"
 }}
 
-Keep prompts concise but descriptive."""
+Make the positive prompt start with the exact character description, then add the scene-specific elements."""
             
             user_prompt = f"""Convert this scene into a detailed image generation prompt featuring the CONSISTENT CHARACTER:
 
-CHARACTER TO USE: {character_profile}
+🎭 MANDATORY CHARACTER PROFILE (copy EXACTLY):
+{character_profile}
 
-Scene: {scene}
+🎦 SCENE TO ADAPT: {scene}
 
-Create a cinematic, detailed prompt featuring the EXACT character described above in this scene. The character's appearance, clothing, and features must remain identical to the profile. Include comprehensive negative prompts to prevent multiple people or character variations.
+📝 INSTRUCTIONS:
+1. START your positive_prompt with the EXACT character description above (word for word)
+2. Then add: ", [scene-specific action/pose from the scene description]"
+3. Then add: ", [environmental details for this scene]"
+4. End with: ", cinematic lighting, high quality, detailed, professional photography"
+5. DO NOT modify any part of the character description
+6. ONLY adapt the action/pose and environment to match the scene
+
+EXAMPLE FORMAT:
+"[EXACT CHARACTER DESCRIPTION], [doing scene action], [in scene environment], cinematic lighting, high quality, detailed"
+
+⚠️ CRITICAL: The character must look identical across all scenes - same clothes, same hair, same everything except pose and expression.
 
 Respond with JSON containing both positive_prompt and negative_prompt fields."""
             
@@ -166,14 +191,14 @@ Create a comprehensive character description focusing on visual consistency for 
         """Generate fallback character profile when Mixtral is unavailable"""
         logging.warning("Using fallback character profile generation")
         
-        # Basic character based on scene content
+        # Basic character based on scene content with VERY specific details for consistency
         if any(word in scenes_text.lower() for word in ['woman', 'she', 'her', 'girl', 'lady']):
-            character = "Young woman in her mid-20s, shoulder-length brown hair, warm brown eyes, fair complexion, wearing a casual red dress with white sneakers, friendly and approachable demeanor, 5'6\" height, slim build"
+            character = "25-year-old woman with shoulder-length straight brown hair, warm brown eyes, fair complexion, 5'6\" tall, slim build, wearing a bright red knee-length dress with short sleeves, white canvas sneakers with white laces, small silver stud earrings, friendly smile"
         elif any(word in scenes_text.lower() for word in ['man', 'he', 'his', 'guy', 'male']):
-            character = "Young man in his late 20s, short dark hair, blue eyes, medium complexion, wearing casual jeans and navy blue t-shirt with white sneakers, confident posture, 5'10\" height, athletic build"
+            character = "28-year-old man with short dark brown hair, blue eyes, medium complexion, 5'10\" tall, athletic build, wearing dark blue jeans, navy blue cotton t-shirt, white leather sneakers, confident expression"
         else:
-            # Default to woman if unclear
-            character = "Young woman in her mid-20s, shoulder-length brown hair, warm brown eyes, fair complexion, wearing a casual red dress with white sneakers, friendly and approachable demeanor, 5'6\" height, slim build"
+            # Default to woman if unclear - same exact description
+            character = "25-year-old woman with shoulder-length straight brown hair, warm brown eyes, fair complexion, 5'6\" tall, slim build, wearing a bright red knee-length dress with short sleeves, white canvas sneakers with white laces, small silver stud earrings, friendly smile"
         
         return character
     
@@ -213,11 +238,11 @@ Create a comprehensive character description focusing on visual consistency for 
         # Ensure single person language
         scene_single = scene.replace(" people ", " person ").replace(" they ", " she ").replace(" them ", " her ")
         
-        # Build prompt with character profile if available
+        # Build prompt with character profile if available - character first for consistency
         if character_profile:
-            positive_prompt = f"{character_profile}, {scene_single}, consistent character, same appearance, cinematic lighting, high quality, detailed, professional photography, 4k resolution, dramatic composition, vivid colors"
+            positive_prompt = f"{character_profile}, {scene_single}, SAME EXACT CHARACTER, IDENTICAL APPEARANCE, SAME CLOTHING, consistent character throughout, cinematic lighting, high quality, detailed, professional photography, 4k resolution, dramatic composition, vivid colors"
         else:
-            positive_prompt = f"single person, {scene_single}, one person only, cinematic lighting, high quality, detailed, professional photography, 4k resolution, dramatic composition, vivid colors"
+            positive_prompt = f"single person, {scene_single}, one person only, consistent character, cinematic lighting, high quality, detailed, professional photography, 4k resolution, dramatic composition, vivid colors"
         
         # Add style based on scene content
         if any(word in scene.lower() for word in ['night', 'dark', 'shadow']):
@@ -230,7 +255,7 @@ Create a comprehensive character description focusing on visual consistency for 
             positive_prompt += ", urban environment, architectural details, street photography"
         
         # Comprehensive negative prompt for single person constraint and character consistency
-        negative_prompt = "multiple people, crowd, group, two people, three people, many people, other person, additional person, background people, extra people, duplicate person, several people, couple, pair, twins, family, team, friends, strangers, bystanders, different clothing, different hair, different appearance, changed outfit, different person"
+        negative_prompt = "multiple people, crowd, group, two people, three people, many people, other person, additional person, background people, extra people, duplicate person, several people, couple, pair, twins, family, team, friends, strangers, bystanders, different clothing, different hair, different appearance, changed outfit, different person, different character, new clothes, changed clothes, different dress, different shirt, different shoes, inconsistent character, character variation, different age, different ethnicity, wardrobe change"
         
         return {
             'positive_prompt': positive_prompt,
@@ -240,50 +265,83 @@ Create a comprehensive character description focusing on visual consistency for 
     def analyze_narrative_structure(self, prompt: str) -> List[str]:
         """Use Mixtral to analyze narrative and extract optimal scene breaks"""
         
-        system_prompt = """You are an expert story analyst and cinematographer. Your task is to break down narratives into optimal scenes for video generation.
+        system_prompt = """You are an expert story analyst and cinematographer. Your task is to create EXACTLY 6 sequential story frames that flow together coherently.
 
-Analyze the given text and identify natural scene breaks that would work well for video production. Each scene should be:
-- Visually distinct and compelling with different actions, poses, or activities
-- Have clear visual elements that can be captured in a still image
-- Flow logically from one to the next
+CRITICAL REQUIREMENTS:
+- Generate EXACTLY 6 frames (no more, no less)
+- Each frame must logically follow the previous one
+- Create a clear story progression from beginning to end
+- Each frame should show different actions/poses but maintain story continuity
+- Focus on creating a coherent narrative arc
 
-IMPORTANT: Generate 3-8 scenes minimum for proper video flow. For simple prompts like "woman walking in park", create multiple different actions and poses:
-- Standing and looking around
-- Walking along the path
-- Smiling at camera
-- Sitting on bench
-- Posing near flowers
-- Stretching or exercising
-- Interacting with environment
+For any prompt, create 6 sequential frames that tell a complete story:
 
-Focus on DIFFERENT ACTIONS and POSES, not just camera angles. Each scene should show the subject doing something different.
+Frame 1: Introduction/Setup (character introduction or scene setting)
+Frame 2: Initial action/movement (character starts doing something)
+Frame 3: Development/progression (action continues or develops)
+Frame 4: Peak moment/interaction (main activity or key moment)
+Frame 5: Resolution/ending action (activity concludes)
+Frame 6: Final moment/conclusion (peaceful ending or final pose)
+
+Example for "woman walking in park":
+1. Woman standing at park entrance, looking ahead
+2. Woman starting to walk along the path, gentle smile
+3. Woman walking more confidently, enjoying the scenery
+4. Woman stops to admire flowers, reaching toward them
+5. Woman sitting on park bench, relaxing
+6. Woman standing up from bench, looking content
 
 CRITICAL: You must respond with ONLY valid JSON in this exact format:
 {
   "scenes": [
     {
       "id": 1,
-      "description": "Scene description here",
+      "description": "Frame 1 description",
       "duration": 3.0,
       "transition": "fade"
     },
     {
       "id": 2,
-      "description": "Next scene description",
-      "duration": 2.5,
+      "description": "Frame 2 description",
+      "duration": 3.0,
+      "transition": "fade"
+    },
+    {
+      "id": 3,
+      "description": "Frame 3 description",
+      "duration": 3.0,
+      "transition": "fade"
+    },
+    {
+      "id": 4,
+      "description": "Frame 4 description",
+      "duration": 3.0,
+      "transition": "fade"
+    },
+    {
+      "id": 5,
+      "description": "Frame 5 description",
+      "duration": 3.0,
+      "transition": "fade"
+    },
+    {
+      "id": 6,
+      "description": "Frame 6 description",
+      "duration": 3.0,
       "transition": "fade"
     }
   ]
 }
 
-Duration should be 2.0-5.0 seconds based on scene complexity. Use "fade", "cut", or "dissolve" for transitions.
 Return ONLY the JSON, no other text."""
         
-        user_prompt = f"""Analyze this narrative and break it into 3-8 optimal scenes for video generation:
+        user_prompt = f"""Create EXACTLY 6 sequential story frames for this prompt that flow together as a coherent narrative:
 
 {prompt}
 
-Return ONLY valid JSON with the exact format specified above."""
+Create 6 frames that tell a complete story from beginning to end. Each frame should logically follow the previous one.
+
+Return ONLY valid JSON with exactly 6 scenes in the format specified above."""
         
         try:
             if not self.check_connection():
@@ -370,43 +428,130 @@ Return ONLY valid JSON with the exact format specified above."""
         return scenes_with_timing
     
     def _fallback_scene_analysis(self, prompt: str) -> List[str]:
-        """Fallback scene analysis when Mixtral is unavailable"""
-        import re
+        """Fallback scene analysis when Mixtral is unavailable - creates exactly 6 story frames"""
         
-        logging.info("Using fallback scene analysis")
+        logging.info("Using fallback scene analysis to create 6 story frames")
         
-        # Simple scene detection based on sentence boundaries and keywords
-        sentences = re.split(r'[.!?]+', prompt.strip())
-        sentences = [s.strip() for s in sentences if s.strip()]
+        # Create exactly 6 coherent story frames based on the prompt
+        base_prompt = prompt.lower()
         
-        scenes = []
-        scene_keywords = ['then', 'next', 'after', 'suddenly', 'meanwhile', 'later', 'finally']
+        # Determine character and setting from prompt
+        if any(word in base_prompt for word in ['woman', 'she', 'her', 'girl', 'lady']):
+            character = "woman"
+        elif any(word in base_prompt for word in ['man', 'he', 'his', 'guy', 'male']):
+            character = "man"
+        else:
+            character = "person"
         
-        current_scene = []
+        # Determine main activity/setting
+        if 'park' in base_prompt:
+            location = "park"
+            frames = self._create_park_story_frames(character)
+        elif any(word in base_prompt for word in ['street', 'sidewalk', 'walking']):
+            location = "street"
+            frames = self._create_street_story_frames(character)
+        elif any(word in base_prompt for word in ['mall', 'shopping', 'market']):
+            location = "mall"
+            frames = self._create_mall_story_frames(character)
+        elif any(word in base_prompt for word in ['home', 'house', 'room']):
+            location = "home"
+            frames = self._create_home_story_frames(character)
+        else:
+            # Default story based on main activity mentioned
+            frames = self._create_generic_story_frames(character, prompt)
         
-        for sentence in sentences:
-            if any(keyword in sentence.lower() for keyword in scene_keywords) and current_scene:
-                # Start new scene
-                scenes.append(' '.join(current_scene))
-                current_scene = [sentence]
-            else:
-                current_scene.append(sentence)
+        logging.info(f"Generated 6 story frames for {character} in {location if 'location' in locals() else 'generic setting'}")
+        return frames
+    
+    def _create_park_story_frames(self, character: str) -> List[str]:
+        """Create 6 coherent story frames for park setting"""
+        return [
+            f"{character} standing at the park entrance, looking ahead with anticipation",
+            f"{character} starting to walk along the park path, taking in the scenery",
+            f"{character} pausing to admire colorful flowers, reaching out gently",
+            f"{character} sitting on a park bench, relaxing and enjoying the peaceful atmosphere",
+            f"{character} feeding birds or watching children play, smiling warmly",
+            f"{character} standing up from the bench, looking content and ready to leave"
+        ]
+    
+    def _create_street_story_frames(self, character: str) -> List[str]:
+        """Create 6 coherent story frames for street/sidewalk setting"""
+        return [
+            f"{character} standing at a street corner, checking directions",
+            f"{character} beginning to walk down the sidewalk with purpose",
+            f"{character} pausing to look at a shop window or street display",
+            f"{character} crossing the street carefully, looking both ways",
+            f"{character} continuing the walk, perhaps checking phone or watch",
+            f"{character} arriving at destination, turning to face the camera with satisfaction"
+        ]
+    
+    def _create_mall_story_frames(self, character: str) -> List[str]:
+        """Create 6 coherent story frames for mall/shopping setting"""
+        return [
+            f"{character} entering the mall through the main entrance, looking around",
+            f"{character} walking through the mall corridor, window shopping",
+            f"{character} stopping at a store display, examining items with interest",
+            f"{character} sitting in the food court area, taking a break",
+            f"{character} carrying shopping bags, walking with satisfaction",
+            f"{character} exiting the mall, looking pleased with the shopping experience"
+        ]
+    
+    def _create_home_story_frames(self, character: str) -> List[str]:
+        """Create 6 coherent story frames for home setting"""
+        return [
+            f"{character} entering through the front door, removing coat or shoes",
+            f"{character} walking through the living room, settling in",
+            f"{character} sitting on the couch or chair, getting comfortable",
+            f"{character} preparing or enjoying a drink or snack",
+            f"{character} reading, watching TV, or doing a relaxing activity",
+            f"{character} standing up and stretching, looking refreshed"
+        ]
+    
+    def _create_generic_story_frames(self, character: str, prompt: str) -> List[str]:
+        """Create 6 coherent story frames for generic activities"""
+        prompt_lower = prompt.lower()
         
-        if current_scene:
-            scenes.append(' '.join(current_scene))
-        
-        # If no clear scene breaks, split into logical chunks
-        if len(scenes) == 1 and len(sentences) > 3:
-            mid = len(sentences) // 2
-            scenes = [
-                ' '.join(sentences[:mid]),
-                ' '.join(sentences[mid:])
+        # Determine main activity from prompt
+        if any(word in prompt_lower for word in ['walking', 'stroll', 'path']):
+            activity = "walking"
+            return [
+                f"{character} standing ready to begin walking, looking ahead",
+                f"{character} taking the first steps, starting the journey",
+                f"{character} walking confidently, enjoying the movement",
+                f"{character} pausing mid-walk to observe surroundings",
+                f"{character} continuing the walk with renewed energy",
+                f"{character} completing the walk, looking satisfied"
             ]
-        
-        # Ensure we have at least 3-8 scenes for video generation
-        scenes = self._ensure_minimum_scenes(scenes, prompt)
-        
-        return scenes
+        elif any(word in prompt_lower for word in ['sitting', 'chair', 'bench']):
+            activity = "sitting"
+            return [
+                f"{character} approaching the seating area, preparing to sit",
+                f"{character} settling down into the seat, getting comfortable",
+                f"{character} sitting relaxed, enjoying the moment",
+                f"{character} adjusting position, finding the perfect comfort",
+                f"{character} sitting peacefully, taking in the environment",
+                f"{character} preparing to stand up, looking refreshed"
+            ]
+        elif any(word in prompt_lower for word in ['dancing', 'music', 'move']):
+            activity = "dancing"
+            return [
+                f"{character} standing ready to dance, listening to the rhythm",
+                f"{character} starting to move, feeling the music",
+                f"{character} dancing gracefully, lost in the moment",
+                f"{character} spinning or making an expressive gesture",
+                f"{character} continuing to dance with joy",
+                f"{character} finishing the dance with a final pose"
+            ]
+        else:
+            # Default generic story progression
+            return [
+                f"{character} in the initial moment, looking ready and alert",
+                f"{character} beginning the main activity, showing engagement",
+                f"{character} fully involved in the activity, concentrated",
+                f"{character} at the peak moment of the activity",
+                f"{character} winding down the activity, showing satisfaction",
+                f"{character} completing the activity, looking accomplished"
+            ]
     
     def _ensure_minimum_scenes(self, scenes: List[str], original_prompt: str) -> List[str]:
         """Ensure we have 3-8 scenes minimum for proper video generation"""

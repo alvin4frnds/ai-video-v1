@@ -186,6 +186,9 @@ class VideoGenerator:
         logging.info(f"🎬 Starting image generation for Scene {scene_id}")
         logging.info(f"📝 Scene description: {scene_data['description'][:100]}{'...' if len(scene_data['description']) > 100 else ''}")
         
+        # Initialize batch analysis data
+        batch_analysis = []
+        
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         final_filename = f"frame_{scene_id:03d}_{timestamp}.png"
         final_filepath = os.path.join(self.frames_dir, final_filename)
@@ -229,7 +232,17 @@ class VideoGenerator:
                 logging.info(f"🔎 Starting face analysis and selection for {len(batch_paths)} images...")
                 
                 # Analyze faces in all generated images
-                best_image = self._select_best_image(batch_paths, scene_data)
+                # Get reference images for clothing consistency (previous selected frames)
+                reference_images = []
+                if scene_id > 1:  # If not first scene, use previous frames as reference
+                    for ref_scene_id in range(1, scene_id):
+                        ref_frame_pattern = os.path.join(self.frames_dir, f"frame_{ref_scene_id:03d}_*.png")
+                        import glob
+                        ref_files = glob.glob(ref_frame_pattern)
+                        if ref_files:
+                            reference_images.append(ref_files[0])  # Use most recent
+                
+                best_image, batch_analysis = self._select_best_image(batch_paths, scene_data, reference_images)
                 
                 if best_image:
                     # Copy best image to final location
@@ -244,14 +257,22 @@ class VideoGenerator:
                     # Clean up batch directory (optional - keep for debugging)
                     # shutil.rmtree(batch_dir)
                     
-                    return final_filepath
+                    return {
+                        'final_path': final_filepath,
+                        'batch_analysis': batch_analysis,
+                        'scene_id': scene_id
+                    }
                 else:
                     logging.warning("⚠️  Face analysis failed to select best image, using first available")
                     if batch_paths:
                         import shutil
                         shutil.copy2(batch_paths[0], final_filepath)
                         logging.info(f"📄 Using fallback image: {os.path.basename(batch_paths[0])} → {final_filename}")
-                        return final_filepath
+                        return {
+                            'final_path': final_filepath,
+                            'batch_analysis': batch_analysis,
+                            'scene_id': scene_id
+                        }
             
             logging.warning(f"💥 Batch generation failed for Scene {scene_id}, falling back to placeholder")
             # Fall through to placeholder generation
@@ -311,12 +332,16 @@ class VideoGenerator:
         if not self.use_sd:
             time.sleep(2)
         
-        return final_filepath
+        return {
+            'final_path': final_filepath,
+            'batch_analysis': batch_analysis,
+            'scene_id': scene_id
+        }
     
-    def _select_best_image(self, image_paths: List[str], scene_data: dict) -> Optional[str]:
-        """Select the best image from batch based on face analysis"""
+    def _select_best_image(self, image_paths: List[str], scene_data: dict, reference_images: List[str] = None) -> tuple[Optional[str], List[dict]]:
+        """Select the best image from batch based on face analysis, clothing consistency, and return analysis data"""
         if not image_paths:
-            return None
+            return None, []
         
         logging.info(f"🔍 Analyzing {len(image_paths)} generated images for quality and face realism...")
         
@@ -327,9 +352,17 @@ class VideoGenerator:
             logging.info(f"👤 Analyzing faces in image {i+1}/{len(image_paths)}: {filename}")
             
             face_data = self.face_analyzer.detect_faces(img_path)
+            
+            # Analyze clothing consistency if reference images available
+            clothing_data = {}
+            if reference_images:
+                clothing_data = self.face_analyzer.analyze_clothing_consistency(img_path, reference_images)
+                logging.info(f"   👕 Clothing consistency: {clothing_data.get('consistency_score', 0):.2f}")
+            
             analysis = {
                 'path': img_path,
                 'face_data': face_data,
+                'clothing_data': clothing_data,
                 'filename': filename
             }
             image_analysis.append(analysis)
@@ -353,6 +386,15 @@ class VideoGenerator:
             else:
                 error_msg = face_data.get('error', 'Unknown issue')
                 logging.info(f"   ❌ No faces detected - {error_msg}")
+            
+            # Log clothing consistency results
+            if clothing_data:
+                consistency = clothing_data.get('consistency_score', 0)
+                colors = clothing_data.get('dominant_colors', [])
+                if consistency > 0:
+                    logging.info(f"   👕 Clothing consistency: {consistency:.2f}, colors: {colors[:2] if colors else 'N/A'}")
+                if clothing_data.get('error'):
+                    logging.info(f"   ⚠️ Clothing analysis error: {clothing_data['error']}")
         
         logging.info(f"📊 Scoring all {len(image_analysis)} images...")
         
@@ -362,7 +404,10 @@ class VideoGenerator:
             score = self._calculate_image_score(analysis, scene_data)
             scored_images.append((score, analysis))
             
-            logging.info(f"📈 Image {i+1} ({analysis['filename']}): overall score {score:.3f}")
+            # Enhanced logging with breakdown
+            face_qual = analysis['face_data'].get('quality_score', 0)
+            clothing_cons = analysis.get('clothing_data', {}).get('consistency_score', 0.5)
+            logging.info(f"📈 Image {i+1} ({analysis['filename']}): overall score {score:.3f} (face: {face_qual:.2f}, clothing: {clothing_cons:.2f})")
         
         # Sort by score (highest first)
         scored_images.sort(key=lambda x: x[0], reverse=True)
@@ -372,18 +417,44 @@ class VideoGenerator:
             logging.info(f"🏆 Image ranking (best to worst):")
             for i, (score, analysis) in enumerate(scored_images):
                 rank_icon = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"{i+1}."
-                logging.info(f"   {rank_icon} {analysis['filename']}: {score:.3f}")
+                face_qual = analysis['face_data'].get('quality_score', 0)
+                clothing_cons = analysis.get('clothing_data', {}).get('consistency_score', 0.5)
+                logging.info(f"   {rank_icon} {analysis['filename']}: {score:.3f} (F:{face_qual:.2f} C:{clothing_cons:.2f})")
             
             best_score, best_analysis = scored_images[0]
-            logging.info(f"🎯 Selected best image: {best_analysis['filename']} with score {best_score:.3f}")
-            return best_analysis['path']
+            best_face = best_analysis['face_data'].get('quality_score', 0)
+            best_clothing = best_analysis.get('clothing_data', {}).get('consistency_score', 0.5)
+            logging.info(f"🎯 Selected best image: {best_analysis['filename']} with score {best_score:.3f} (face: {best_face:.2f}, clothing: {best_clothing:.2f})")
+            
+            # Prepare batch analysis data for UI
+            batch_analysis = []
+            for score, analysis in scored_images:
+                face_data = analysis['face_data']
+                batch_analysis.append({
+                    'path': analysis['path'],
+                    'filename': analysis['filename'],
+                    'score': score,
+                    'face_count': face_data.get('face_count', 0),
+                    'quality_score': face_data.get('quality_score', 0),
+                    'has_realistic_face': face_data.get('has_realistic_face', False),
+                    'detection_methods': face_data.get('detection_methods', []),
+                    'faces': face_data.get('faces', []),
+                    'error': face_data.get('error', None),
+                    'clothing_consistency': analysis.get('clothing_data', {}).get('consistency_score', 0.5),
+                    'clothing_colors': analysis.get('clothing_data', {}).get('dominant_colors', []),
+                    'clothing_error': analysis.get('clothing_data', {}).get('error', None),
+                    'is_selected': analysis == best_analysis
+                })
+            
+            return best_analysis['path'], batch_analysis
         
         logging.warning("⚠️  No images could be scored properly")
-        return None
+        return None, []
     
     def _calculate_image_score(self, analysis: dict, scene_data: dict) -> float:
-        """Calculate overall score for an image"""
+        """Calculate overall score for an image including face quality and clothing consistency"""
         face_data = analysis['face_data']
+        clothing_data = analysis.get('clothing_data', {})
         
         # Base quality score from face analysis
         face_quality = face_data.get('quality_score', 0.0)
@@ -412,16 +483,21 @@ class VideoGenerator:
         else:
             detection_score = 0.6
         
-        # Error penalty
-        error_penalty = 0.0 if 'error' not in face_data else 0.5
+        # Clothing consistency score (NEW)
+        clothing_score = clothing_data.get('consistency_score', 0.5)  # Default neutral if no reference
         
-        # Combined score
+        # Error penalties
+        face_error_penalty = 0.0 if 'error' not in face_data or face_data['error'] is None else 0.3
+        clothing_error_penalty = 0.0 if 'error' not in clothing_data or clothing_data['error'] is None else 0.1
+        
+        # Combined score with clothing consistency as a major factor
         total_score = (
-            face_quality * 0.35 +
-            face_count_score * 0.25 +
-            face_realism * 0.25 +
-            detection_score * 0.15
-        ) - error_penalty
+            face_quality * 0.25 +           # Face detection quality
+            face_count_score * 0.20 +       # Correct number of faces
+            face_realism * 0.20 +           # Face realism
+            detection_score * 0.10 +        # Detection method reliability
+            clothing_score * 0.25           # Character consistency (NEW - high weight)
+        ) - face_error_penalty - clothing_error_penalty
         
         return max(0.0, min(1.0, total_score))
     

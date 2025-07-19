@@ -4,6 +4,11 @@ import logging
 from typing import List, Dict, Tuple, Optional
 import os
 from PIL import Image
+try:
+    from sklearn.cluster import KMeans
+except ImportError:
+    logging.warning("sklearn not available - clothing analysis will use fallback methods")
+    KMeans = None
 
 class FaceAnalyzer:
     """Face detection and analysis for image quality assessment"""
@@ -308,3 +313,136 @@ class FaceAnalyzer:
         # Weighted average
         similarity = (ar_score * 0.3 + size_score * 0.3 + pos_score * 0.2 + conf_score * 0.2)
         return similarity
+    
+    def analyze_clothing_consistency(self, image_path: str, reference_paths: List[str] = None) -> Dict:
+        """Analyze clothing and appearance consistency across images"""
+        if not os.path.exists(image_path):
+            return {'error': 'Image not found', 'consistency_score': 0.0}
+        
+        try:
+            # Load image
+            img = cv2.imread(image_path)
+            if img is None:
+                return {'error': 'Could not load image', 'consistency_score': 0.0}
+            
+            # Convert to different color spaces for analysis
+            hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+            lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+            
+            # Extract clothing region (assume lower 60% of image for body/clothing)
+            height, width = img.shape[:2]
+            clothing_region = img[int(height * 0.4):, :]
+            clothing_hsv = hsv[int(height * 0.4):, :]
+            
+            # Calculate dominant colors in clothing region
+            clothing_colors = self._extract_dominant_colors(clothing_region, n_colors=3)
+            
+            # Calculate color histogram for consistency check
+            hist_h = cv2.calcHist([clothing_hsv], [0], None, [180], [0, 180])
+            hist_s = cv2.calcHist([clothing_hsv], [1], None, [256], [0, 256])
+            hist_v = cv2.calcHist([clothing_hsv], [2], None, [256], [0, 256])
+            
+            result = {
+                'dominant_colors': clothing_colors,
+                'color_histogram': {
+                    'hue': hist_h.flatten().tolist(),
+                    'saturation': hist_s.flatten().tolist(),
+                    'value': hist_v.flatten().tolist()
+                },
+                'consistency_score': 1.0,  # Will be calculated against reference
+                'error': None
+            }
+            
+            # If reference images provided, calculate consistency
+            if reference_paths:
+                consistency_scores = []
+                for ref_path in reference_paths:
+                    if os.path.exists(ref_path) and ref_path != image_path:
+                        ref_analysis = self.analyze_clothing_consistency(ref_path)
+                        if 'error' not in ref_analysis or ref_analysis['error'] is None:
+                            score = self._calculate_clothing_similarity(result, ref_analysis)
+                            consistency_scores.append(score)
+                
+                result['consistency_score'] = np.mean(consistency_scores) if consistency_scores else 0.5
+                result['reference_comparisons'] = len(consistency_scores)
+            
+            return result
+            
+        except Exception as e:
+            logging.error(f"Error in clothing analysis: {str(e)}")
+            return {'error': str(e), 'consistency_score': 0.0}
+    
+    def _extract_dominant_colors(self, image: np.ndarray, n_colors: int = 3) -> List[Tuple[int, int, int]]:
+        """Extract dominant colors from image region"""
+        # Reshape image to be a list of pixels
+        pixels = image.reshape(-1, 3)
+        
+        # Use k-means clustering to find dominant colors
+        from sklearn.cluster import KMeans
+        
+        # Reduce number of pixels for performance
+        if len(pixels) > 10000:
+            indices = np.random.choice(len(pixels), 10000, replace=False)
+            pixels = pixels[indices]
+        
+        try:
+            kmeans = KMeans(n_clusters=n_colors, random_state=42, n_init=10)
+            kmeans.fit(pixels)
+            colors = kmeans.cluster_centers_.astype(int)
+            
+            # Convert BGR to RGB and return as list of tuples
+            return [(int(color[2]), int(color[1]), int(color[0])) for color in colors]
+        except:
+            # Fallback: return image mean color
+            mean_color = np.mean(pixels, axis=0).astype(int)
+            return [(int(mean_color[2]), int(mean_color[1]), int(mean_color[0]))]
+    
+    def _calculate_clothing_similarity(self, analysis1: Dict, analysis2: Dict) -> float:
+        """Calculate similarity between clothing analyses"""
+        if 'error' in analysis1 or 'error' in analysis2:
+            return 0.0
+        
+        # Compare dominant colors
+        colors1 = analysis1.get('dominant_colors', [])
+        colors2 = analysis2.get('dominant_colors', [])
+        
+        if not colors1 or not colors2:
+            return 0.5
+        
+        # Calculate color similarity using euclidean distance in RGB space
+        color_similarities = []
+        for c1 in colors1:
+            max_sim = 0
+            for c2 in colors2:
+                # Calculate color distance
+                dist = np.sqrt(sum((a - b) ** 2 for a, b in zip(c1, c2)))
+                # Convert to similarity (0-1, where 1 is identical)
+                sim = max(0, 1.0 - dist / (255 * np.sqrt(3)))  # Normalize by max possible distance
+                max_sim = max(max_sim, sim)
+            color_similarities.append(max_sim)
+        
+        color_score = np.mean(color_similarities) if color_similarities else 0.5
+        
+        # Compare histograms
+        hist1 = analysis1.get('color_histogram', {})
+        hist2 = analysis2.get('color_histogram', {})
+        
+        hist_score = 0.5  # Default
+        if hist1 and hist2:
+            try:
+                # Compare hue histograms (most important for clothing)
+                h1 = np.array(hist1.get('hue', []))
+                h2 = np.array(hist2.get('hue', []))
+                if len(h1) == len(h2) and len(h1) > 0:
+                    # Normalize histograms
+                    h1 = h1 / (np.sum(h1) + 1e-8)
+                    h2 = h2 / (np.sum(h2) + 1e-8)
+                    # Calculate correlation
+                    hist_score = cv2.compareHist(h1.astype(np.float32), h2.astype(np.float32), cv2.HISTCMP_CORREL)
+                    hist_score = max(0, hist_score)  # Ensure non-negative
+            except:
+                hist_score = 0.5
+        
+        # Weighted combination
+        final_score = (color_score * 0.7 + hist_score * 0.3)
+        return final_score

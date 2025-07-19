@@ -97,17 +97,33 @@
 - Comprehensive face validation and error handling
 **Result**: Achieves ultimate character consistency with exact same face across all 6 frames
 
+## Testing Framework 🧪
+
+### Comprehensive Test Suite (74 Tests)
+- **test_imports.py** - Package and dependency validation
+- **test_models.py** - Unit tests for all model classes
+- **test_extensions.py** - SD WebUI, Roop, ADetailer, Ollama integration tests
+- **test_directories.py** - File system structure and permissions
+- **test_pipeline.py** - Functional tests for pipeline components
+- **test_ui_components.py** - Gradio interface and styling tests
+
+### Test Execution
+- **Automatic**: Run via `./run.sh` (tests before app launch)
+- **Manual**: Run via `python test_runner.py`
+- **Options**: `--skip-tests`, `--force`, `--help`
+- **Coverage**: 57 passed, 17 failed/errors (external dependencies), 2 skipped
+
 ## Technical Architecture
 
 ### Pipeline Flow
 1. **Text Input** → Random test prompt if empty
 2. **Face Selection** → Random face from in/individual/ directory (seed-based)
-3. **Mixtral Analysis** → 6 coherent story frames (with fallback)
+3. **Mixtral Analysis** → 6 coherent story frames (with fallback, 100s timeout)
 4. **Character Generation** → Consistent character profile
 5. **Prompt Enhancement** → Scene-specific image prompts
-6. **Roop Face Swapping** → Batch generation with selected face (if available)
+6. **Roop Face Swapping** → Batch generation with selected face (with error handling)
 7. **Face & Clothing Analysis** → Best image selection with consistency scoring
-8. **Video Creation** → H.264 with transitions
+8. **Video Creation** → H.264 with transitions (avc1 codec for compatibility)
 
 ### Output Structure
 ```
@@ -147,14 +163,17 @@ in/
 
 ## UI Features
 - Text prompt input (with random test prompt generation)
+- **Candidate count input**: Configurable images per scene (default: 2, range: 1-10)
+- **Auto-clean checkbox**: Clean output frames before generation
 - Progress tracking with detailed scene-by-scene updates
 - Video output display
 - Final selected frames gallery (6 frames, 3x2 layout)
-- **Batch analysis display**: All 36 generated images with scores
+- **Interactive comparison table**: Clickable thumbnails with scores and rankings
+- **Batch analysis display**: All generated images with scores  
 - **Face & clothing analysis report**: Detailed breakdown per image
 - **Consistency statistics**: Summary of face quality and clothing consistency
 - Clean output folder button
-- Sans-serif font styling
+- Sans-serif font styling with improved contrast (dark text on light rank backgrounds)
 
 ## Known Working Test Cases
 - "woman walking in park" → 6-frame park story
@@ -177,10 +196,28 @@ in/
 - Advanced character pose consistency
 - Multiple character support (currently single person constraint)
 
+## Git Workflow and Version Control
+**IMPORTANT**: Regular git commits are essential for tracking progress and maintaining code history. All significant changes should be committed with descriptive messages following the established pattern.
+
+### Git Commit Guidelines
+- Commit frequently after implementing features or fixes
+- Use descriptive commit messages explaining the "why" not just the "what"
+- Include 🧪 Generated with [Claude Code](https://claude.ai/code) and Co-Authored-By tags
+- Update context.txt with major changes before committing
+
 ---
 Last Updated: July 19, 2025
-Status: Production Ready
-Recent Major Updates:
+Status: Production Ready with Comprehensive Testing
+Recent Major Updates (Latest Session):
+- **Comprehensive Testing Framework** - ADDED (74 tests covering all components)
+- **UI Control Enhancements** - ADDED (candidate count input, auto-cleanup checkbox)
+- **Roop Error Handling** - ENHANCED (automatic fallback to regular generation)
+- **Mixtral Timeout** - INCREASED (30s → 100s for complex prompts)
+- **Video Codec Optimization** - IMPROVED (avc1 tag for better MP4 compatibility)
+- **Table CSS Contrast** - FIXED (dark text on light backgrounds for readability)
+- **Enhanced run.sh** - UPDATED (integrated testing with command-line options)
+
+Previous Updates:
 - Story sequence coherence (3rd frame narrative break) - RESOLVED
 - Character consistency across all 6 frames - ENHANCED  
 - Clothing similarity analysis system - IMPLEMENTED

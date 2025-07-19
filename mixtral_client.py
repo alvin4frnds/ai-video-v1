@@ -145,6 +145,8 @@ Analyze the given text and identify natural scene breaks that would work well fo
 - Have clear visual elements that can be captured in a still image
 - Flow logically from one to the next
 
+IMPORTANT: Generate 3-8 scenes minimum for proper video flow. For simple prompts, create multiple camera angles, perspectives, or moments.
+
 Return ONLY a numbered list of scene descriptions, one per line. Keep each scene description concise but visually descriptive (1-2 sentences max)."""
         
         user_prompt = f"""Analyze this narrative and break it into 3-8 optimal scenes for video generation:
@@ -173,7 +175,13 @@ Return scenes as a simple numbered list."""
                         scenes.append(scene)
             
             logging.info(f"Mixtral identified {len(scenes)} scenes")
-            return scenes if scenes else self._fallback_scene_analysis(prompt)
+            
+            if scenes:
+                # Ensure minimum scenes for Mixtral results too
+                scenes = self._ensure_minimum_scenes(scenes, prompt)
+                return scenes
+            else:
+                return self._fallback_scene_analysis(prompt)
             
         except Exception as e:
             logging.error(f"Error in Mixtral narrative analysis: {str(e)}")
@@ -212,5 +220,42 @@ Return scenes as a simple numbered list."""
                 ' '.join(sentences[:mid]),
                 ' '.join(sentences[mid:])
             ]
+        
+        # Ensure we have at least 3-8 scenes for video generation
+        scenes = self._ensure_minimum_scenes(scenes, prompt)
+        
+        return scenes
+    
+    def _ensure_minimum_scenes(self, scenes: List[str], original_prompt: str) -> List[str]:
+        """Ensure we have 3-8 scenes minimum for proper video generation"""
+        
+        if len(scenes) >= 3:
+            # If we have 3 or more, cap at 8 for performance
+            return scenes[:8]
+        
+        # If we have less than 3 scenes, expand them
+        if len(scenes) == 1:
+            # Single scene - break it into multiple perspectives/moments
+            base_scene = scenes[0]
+            expanded_scenes = [
+                f"Close-up view: {base_scene}",
+                f"Wide shot: {base_scene}",
+                f"Side angle: {base_scene}",
+                f"Final moment: {base_scene}"
+            ]
+            logging.info("Expanded single scene into 4 camera angles")
+            return expanded_scenes
+            
+        elif len(scenes) == 2:
+            # Two scenes - add transition and detail shots
+            expanded_scenes = [
+                f"Opening scene: {scenes[0]}",
+                f"Detail shot: {scenes[0]}",
+                f"Transition moment between scenes",
+                f"Continuing: {scenes[1]}",
+                f"Final moment: {scenes[1]}"
+            ]
+            logging.info("Expanded two scenes into 5 detailed shots")
+            return expanded_scenes
         
         return scenes

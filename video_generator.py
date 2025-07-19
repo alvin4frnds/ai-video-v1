@@ -73,6 +73,12 @@ class VideoGenerator:
         for i, scene in enumerate(scenes):
             logging.info(f"Scene {i+1}: {scene[:100]}...")
         
+        # Ensure we have enough scenes for a proper video
+        if len(scenes) < 3:
+            logging.warning(f"Only {len(scenes)} scenes detected - this may result in a very short video")
+        elif len(scenes) > 8:
+            logging.info(f"Generated {len(scenes)} scenes - video will be substantial")
+        
         return scenes
     
     def plan_sequences(self, scenes):

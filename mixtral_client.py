@@ -140,12 +140,21 @@ Create a cinematic, detailed prompt that an AI image generator can use to create
         system_prompt = """You are an expert story analyst and cinematographer. Your task is to break down narratives into optimal scenes for video generation.
 
 Analyze the given text and identify natural scene breaks that would work well for video production. Each scene should be:
-- Visually distinct and compelling
+- Visually distinct and compelling with different actions, poses, or activities
 - 3-5 seconds long when converted to video
 - Have clear visual elements that can be captured in a still image
 - Flow logically from one to the next
 
-IMPORTANT: Generate 3-8 scenes minimum for proper video flow. For simple prompts, create multiple camera angles, perspectives, or moments.
+IMPORTANT: Generate 3-8 scenes minimum for proper video flow. For simple prompts like "woman walking in park", create multiple different actions and poses:
+- Standing and looking around
+- Walking along the path
+- Smiling at camera
+- Sitting on bench
+- Posing near flowers
+- Stretching or exercising
+- Interacting with environment
+
+Focus on DIFFERENT ACTIONS and POSES, not just camera angles. Each scene should show the subject doing something different.
 
 Return ONLY a numbered list of scene descriptions, one per line. Keep each scene description concise but visually descriptive (1-2 sentences max)."""
         
@@ -233,29 +242,97 @@ Return scenes as a simple numbered list."""
             # If we have 3 or more, cap at 8 for performance
             return scenes[:8]
         
-        # If we have less than 3 scenes, expand them
+        # If we have less than 3 scenes, expand them with different actions
         if len(scenes) == 1:
-            # Single scene - break it into multiple perspectives/moments
-            base_scene = scenes[0]
-            expanded_scenes = [
-                f"Close-up view: {base_scene}",
-                f"Wide shot: {base_scene}",
-                f"Side angle: {base_scene}",
-                f"Final moment: {base_scene}"
-            ]
-            logging.info("Expanded single scene into 4 camera angles")
+            # Single scene - create different actions/poses based on context
+            base_scene = scenes[0].lower()
+            expanded_scenes = self._expand_single_scene(scenes[0], base_scene)
+            logging.info(f"Expanded single scene into {len(expanded_scenes)} different actions")
             return expanded_scenes
             
         elif len(scenes) == 2:
-            # Two scenes - add transition and detail shots
+            # Two scenes - add intermediate actions
             expanded_scenes = [
-                f"Opening scene: {scenes[0]}",
-                f"Detail shot: {scenes[0]}",
-                f"Transition moment between scenes",
+                f"Starting: {scenes[0]}",
+                self._create_intermediate_action(scenes[0]),
+                f"Transitioning from {scenes[0]} to {scenes[1]}",
                 f"Continuing: {scenes[1]}",
-                f"Final moment: {scenes[1]}"
+                self._create_final_action(scenes[1])
             ]
-            logging.info("Expanded two scenes into 5 detailed shots")
+            logging.info("Expanded two scenes into 5 action sequences")
             return expanded_scenes
         
         return scenes
+    
+    def _expand_single_scene(self, original_scene: str, context: str) -> List[str]:
+        """Expand a single scene into multiple actions based on context"""
+        
+        # Extract key elements
+        if 'walking' in context:
+            if 'park' in context:
+                return [
+                    original_scene.replace('walking', 'standing and looking around'),
+                    original_scene,  # original walking
+                    original_scene.replace('walking', 'sitting on a bench'),
+                    original_scene.replace('walking', 'smiling and posing near flowers'),
+                    original_scene.replace('walking', 'stretching and exercising')
+                ]
+            elif 'street' in context or 'sidewalk' in context:
+                return [
+                    original_scene.replace('walking', 'standing at the corner'),
+                    original_scene,  # original walking
+                    original_scene.replace('walking', 'pausing to look at phone'),
+                    original_scene.replace('walking', 'window shopping'),
+                    original_scene.replace('walking', 'crossing the street')
+                ]
+            elif 'mall' in context:
+                return [
+                    original_scene.replace('walking', 'entering the mall'),
+                    original_scene,  # original walking
+                    original_scene.replace('walking', 'looking at store displays'),
+                    original_scene.replace('walking', 'sitting in food court'),
+                    original_scene.replace('walking', 'carrying shopping bags')
+                ]
+            elif 'market' in context:
+                return [
+                    original_scene.replace('walking', 'examining fresh produce'),
+                    original_scene,  # original walking
+                    original_scene.replace('walking', 'talking to vendor'),
+                    original_scene.replace('walking', 'carrying market bags'),
+                    original_scene.replace('walking', 'selecting items')
+                ]
+        
+        # Generic expansion for other contexts
+        subject = "person"
+        if 'woman' in context:
+            subject = "woman"
+        elif 'man' in context:
+            subject = "man"
+            
+        return [
+            f"{subject} standing and posing",
+            original_scene,  # original
+            f"{subject} smiling at camera",
+            f"{subject} in a different pose",
+            f"{subject} in final position"
+        ]
+    
+    def _create_intermediate_action(self, scene: str) -> str:
+        """Create an intermediate action for scene transitions"""
+        context = scene.lower()
+        if 'walking' in context:
+            return scene.replace('walking', 'pausing and looking around')
+        elif 'standing' in context:
+            return scene.replace('standing', 'moving slightly and adjusting pose')
+        else:
+            return f"Intermediate moment: {scene}"
+    
+    def _create_final_action(self, scene: str) -> str:
+        """Create a final action for scene completion"""
+        context = scene.lower()
+        if 'walking' in context:
+            return scene.replace('walking', 'reaching destination and turning')
+        elif 'sitting' in context:
+            return scene.replace('sitting', 'standing up and preparing to leave')
+        else:
+            return f"Final moment: {scene}"

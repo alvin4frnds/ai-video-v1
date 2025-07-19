@@ -66,6 +66,10 @@
 1. **Add random test prompt feature**
    - Action: Added auto-generation of test prompts when input is empty, with random color/location combinations
 
+
+1. **Improve scene expansion with different actions**
+   - Action: Updated scene generation to create varied actions/poses instead of camera angles, with context-aware expansions
+
 ## CURRENT PROJECT STRUCTURE
 ```
 video-generation/
@@ -96,6 +100,7 @@ video-generation/
 ✅ Custom SD settings applied
 ✅ Network SD WebUI configured and tested
 ✅ Random test prompt feature added
+✅ Smart action-based scene expansion implemented
 ## CURRENT WORKFLOW
 1. **Text Prompt Analysis** - Parse narrative structure, identify scenes
 2. **Scene Sequencing** - Plan still frame sequences with timing

@@ -170,10 +170,10 @@ with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome(
         )
     
     # Auto-refresh logs every 2 seconds
-    demo.load(
+    timer = gr.Timer(2)
+    timer.tick(
         fn=update_logs,
-        outputs=logs_output,
-        every=2
+        outputs=logs_output
     )
     
     # Generate button click handler

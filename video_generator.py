@@ -94,8 +94,23 @@ class VideoGenerator:
         scenes = self.mixtral.analyze_narrative_structure(prompt)
         
         logging.info(f"Extracted {len(scenes)} scenes from prompt")
-        for i, scene in enumerate(scenes):
-            logging.info(f"Scene {i+1}: {scene[:100]}...")
+        
+        # Handle both old string format and new dict format for backward compatibility
+        if scenes and isinstance(scenes[0], dict):
+            # New format with timing data
+            for i, scene in enumerate(scenes):
+                logging.info(f"Scene {i+1}: {scene['description'][:80]}... (duration: {scene['duration']}s)")
+        else:
+            # Old format - convert to new format
+            scenes_with_timing = []
+            for i, scene in enumerate(scenes):
+                scenes_with_timing.append({
+                    'description': scene,
+                    'duration': 3.0,
+                    'transition': 'fade' if i > 0 else 'none'
+                })
+                logging.info(f"Scene {i+1}: {scene[:100]}... (default timing)")
+            scenes = scenes_with_timing
         
         # Ensure we have enough scenes for a proper video
         if len(scenes) < 3:
@@ -109,21 +124,34 @@ class VideoGenerator:
         """Plan the sequence of still frames needed using Mixtral-enhanced prompts"""
         logging.info("Planning frame sequences with Mixtral-enhanced prompts...")
         
+        # Convert scene data for prompt enhancement
+        scene_descriptions = []
+        for scene in scenes:
+            if isinstance(scene, dict):
+                scene_descriptions.append(scene['description'])
+            else:
+                scene_descriptions.append(scene)
+        
         # Use Mixtral to generate enhanced prompts for each scene
-        enhanced_scenes = self.mixtral.generate_scene_prompts(scenes)
+        enhanced_scenes = self.mixtral.generate_scene_prompts(scene_descriptions)
         
         scene_plan = []
-        for enhanced_scene in enhanced_scenes:
+        for i, enhanced_scene in enumerate(enhanced_scenes):
+            # Get timing data from original scene if available
+            original_scene = scenes[i] if i < len(scenes) else scenes[0]
+            duration = original_scene.get('duration', 3.0) if isinstance(original_scene, dict) else 3.0
+            transition = original_scene.get('transition', 'fade') if isinstance(original_scene, dict) else 'fade'
+            
             frame_data = {
                 'scene_id': enhanced_scene['scene_id'],
                 'description': enhanced_scene['original_description'],
                 'prompt': enhanced_scene['enhanced_prompt'],
-                'duration': enhanced_scene['duration'],
-                'transition_type': enhanced_scene['transition_type']
+                'duration': duration,
+                'transition_type': transition
             }
             scene_plan.append(frame_data)
             
-            logging.info(f"Planned frame {enhanced_scene['scene_id']}: {frame_data['prompt'][:80]}...")
+            logging.info(f"Planned frame {enhanced_scene['scene_id']}: {frame_data['prompt'][:60]}... (duration: {duration}s)")
         
         return scene_plan
     
@@ -256,7 +284,6 @@ class VideoGenerator:
         
         # Video settings
         fps = 30
-        frame_duration = 3.0  # seconds per still
         transition_duration = 1.0  # seconds for transition
         
         # Calculate video dimensions (portrait format)
@@ -280,8 +307,13 @@ class VideoGenerator:
             
             img = cv2.resize(img, (width, height))
             
+            # Get custom duration for this frame
+            frame_duration = img_data.get('duration', 3.0)
+            transition_type = img_data.get('transition_type', 'fade')
+            
             # Add still frame (hold for duration)
             still_frames = int(frame_duration * fps)
+            logging.info(f"Frame {i+1}: holding for {frame_duration}s ({still_frames} frames) with {transition_type} transition")
             for _ in range(still_frames):
                 out.write(img)
             
@@ -291,12 +323,28 @@ class VideoGenerator:
                 if next_img is not None:
                     next_img = cv2.resize(next_img, (width, height))
                     
-                    # Create fade transition
-                    transition_frames = int(transition_duration * fps)
-                    for frame_num in range(transition_frames):
-                        alpha = frame_num / transition_frames
-                        blended = cv2.addWeighted(img, 1 - alpha, next_img, alpha, 0)
-                        out.write(blended)
+                    if transition_type == "cut":
+                        # No transition - direct cut
+                        logging.info(f"Using cut transition to next frame")
+                        pass  # No frames added
+                    elif transition_type == "dissolve":
+                        # Slower dissolve transition
+                        transition_frames = int(transition_duration * 1.5 * fps)  # 50% longer
+                        logging.info(f"Using dissolve transition ({transition_frames} frames)")
+                        for frame_num in range(transition_frames):
+                            alpha = frame_num / transition_frames
+                            # Smoother dissolve curve
+                            alpha = alpha * alpha * (3.0 - 2.0 * alpha)  # Smoothstep
+                            blended = cv2.addWeighted(img, 1 - alpha, next_img, alpha, 0)
+                            out.write(blended)
+                    else:  # Default fade
+                        # Standard fade transition
+                        transition_frames = int(transition_duration * fps)
+                        logging.info(f"Using fade transition ({transition_frames} frames)")
+                        for frame_num in range(transition_frames):
+                            alpha = frame_num / transition_frames
+                            blended = cv2.addWeighted(img, 1 - alpha, next_img, alpha, 0)
+                            out.write(blended)
         
         out.release()
         logging.info(f"Video creation complete: {video_path}")

@@ -74,6 +74,10 @@
 1. **Add YmdH seed for consistency**
    - Action: Implemented YmdH format seeds for consistent image generation and prompt choices within same hour
 
+
+1. **Add JSON format for Mixtral with timing**
+   - Action: Updated Mixtral to return structured JSON with scene durations and transition types, implemented different transition effects
+
 ## CURRENT PROJECT STRUCTURE
 ```
 video-generation/
@@ -106,6 +110,7 @@ video-generation/
 ✅ Random test prompt feature added
 ✅ Smart action-based scene expansion implemented
 ✅ YmdH seed consistency implemented
+✅ Structured JSON timing system implemented
 ## CURRENT WORKFLOW
 1. **Text Prompt Analysis** - Parse narrative structure, identify scenes
 2. **Scene Sequencing** - Plan still frame sequences with timing

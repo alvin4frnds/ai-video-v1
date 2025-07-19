@@ -143,7 +143,6 @@ Create a cinematic, detailed prompt that an AI image generator can use to create
 
 Analyze the given text and identify natural scene breaks that would work well for video production. Each scene should be:
 - Visually distinct and compelling with different actions, poses, or activities
-- 3-5 seconds long when converted to video
 - Have clear visual elements that can be captured in a still image
 - Flow logically from one to the next
 
@@ -158,13 +157,32 @@ IMPORTANT: Generate 3-8 scenes minimum for proper video flow. For simple prompts
 
 Focus on DIFFERENT ACTIONS and POSES, not just camera angles. Each scene should show the subject doing something different.
 
-Return ONLY a numbered list of scene descriptions, one per line. Keep each scene description concise but visually descriptive (1-2 sentences max)."""
+CRITICAL: You must respond with ONLY valid JSON in this exact format:
+{
+  "scenes": [
+    {
+      "id": 1,
+      "description": "Scene description here",
+      "duration": 3.0,
+      "transition": "fade"
+    },
+    {
+      "id": 2,
+      "description": "Next scene description",
+      "duration": 2.5,
+      "transition": "fade"
+    }
+  ]
+}
+
+Duration should be 2.0-5.0 seconds based on scene complexity. Use "fade", "cut", or "dissolve" for transitions.
+Return ONLY the JSON, no other text."""
         
         user_prompt = f"""Analyze this narrative and break it into 3-8 optimal scenes for video generation:
 
 {prompt}
 
-Return scenes as a simple numbered list."""
+Return ONLY valid JSON with the exact format specified above."""
         
         try:
             if not self.check_connection():
@@ -173,30 +191,82 @@ Return scenes as a simple numbered list."""
             
             result = self._call_mixtral(system_prompt, user_prompt)
             
-            # Parse the numbered list
-            scenes = []
-            for line in result.split('\n'):
-                line = line.strip()
-                if line and (line[0].isdigit() or line.startswith('-')):
-                    # Remove numbering and clean up
-                    scene = line.split('.', 1)[-1].strip()
-                    if scene.startswith('-'):
-                        scene = scene[1:].strip()
-                    if scene:
-                        scenes.append(scene)
-            
-            logging.info(f"Mixtral identified {len(scenes)} scenes")
-            
-            if scenes:
-                # Ensure minimum scenes for Mixtral results too
-                scenes = self._ensure_minimum_scenes(scenes, prompt)
-                return scenes
-            else:
-                return self._fallback_scene_analysis(prompt)
+            # Parse JSON response
+            try:
+                # Clean up the response - sometimes Mixtral adds extra text
+                json_start = result.find('{')
+                json_end = result.rfind('}') + 1
+                if json_start >= 0 and json_end > json_start:
+                    json_str = result[json_start:json_end]
+                    data = json.loads(json_str)
+                    
+                    if 'scenes' in data and len(data['scenes']) > 0:
+                        scenes = []
+                        for scene_data in data['scenes']:
+                            scene_info = {
+                                'description': scene_data.get('description', ''),
+                                'duration': float(scene_data.get('duration', 3.0)),
+                                'transition': scene_data.get('transition', 'fade')
+                            }
+                            scenes.append(scene_info)
+                        
+                        logging.info(f"Mixtral provided {len(scenes)} scenes with timing data")
+                        for i, scene in enumerate(scenes):
+                            logging.info(f"Scene {i+1}: {scene['description'][:80]}... (duration: {scene['duration']}s, transition: {scene['transition']})")
+                        
+                        return scenes
+                    else:
+                        logging.warning("Mixtral JSON missing scenes array")
+                        return self._fallback_scene_analysis_with_timing(prompt)
+                else:
+                    logging.warning("Could not find valid JSON in Mixtral response")
+                    return self._fallback_scene_analysis_with_timing(prompt)
+                    
+            except json.JSONDecodeError as e:
+                logging.warning(f"Failed to parse Mixtral JSON: {str(e)}")
+                logging.warning(f"Raw response: {result[:200]}...")
+                return self._fallback_scene_analysis_with_timing(prompt)
             
         except Exception as e:
             logging.error(f"Error in Mixtral narrative analysis: {str(e)}")
-            return self._fallback_scene_analysis(prompt)
+            return self._fallback_scene_analysis_with_timing(prompt)
+    
+    def _fallback_scene_analysis_with_timing(self, prompt: str) -> List[Dict]:
+        """Fallback scene analysis that returns timing data"""
+        # Get basic scenes from existing fallback
+        basic_scenes = self._fallback_scene_analysis(prompt)
+        
+        # Convert to timing format
+        scenes_with_timing = []
+        for i, scene in enumerate(basic_scenes):
+            # Assign timing based on scene content
+            duration = 3.0  # Default
+            transition = "fade"
+            
+            # Adjust timing based on content
+            if any(word in scene.lower() for word in ['standing', 'looking', 'posing']):
+                duration = 2.5  # Shorter for static poses
+            elif any(word in scene.lower() for word in ['walking', 'running', 'moving']):
+                duration = 3.5  # Longer for movement
+            elif any(word in scene.lower() for word in ['sitting', 'talking', 'examining']):
+                duration = 4.0  # Longer for detailed actions
+            
+            # Adjust transitions
+            if i == 0:
+                transition = "none"  # First scene
+            elif any(word in scene.lower() for word in ['suddenly', 'quickly', 'immediately']):
+                transition = "cut"  # Quick transition
+            elif any(word in scene.lower() for word in ['slowly', 'gently', 'gradually']):
+                transition = "dissolve"  # Slow transition
+            
+            scenes_with_timing.append({
+                'description': scene,
+                'duration': duration,
+                'transition': transition
+            })
+        
+        logging.info(f"Fallback analysis generated {len(scenes_with_timing)} scenes with timing")
+        return scenes_with_timing
     
     def _fallback_scene_analysis(self, prompt: str) -> List[str]:
         """Fallback scene analysis when Mixtral is unavailable"""

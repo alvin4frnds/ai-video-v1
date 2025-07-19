@@ -95,7 +95,9 @@ class VideoGenerator:
             
             if test_result:
                 logging.info("✅ SD test generation successful")
-                os.remove(test_path)  # Clean up test file
+                # Clean up test file if it exists
+                if os.path.exists(test_path):
+                    os.remove(test_path)
                 self.use_sd = True
             else:
                 logging.warning("❌ SD test generation failed - using placeholder mode")

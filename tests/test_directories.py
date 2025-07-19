@@ -187,6 +187,7 @@ class TestFileOperations(unittest.TestCase):
         """Test video file operations"""
         try:
             import cv2
+            import numpy as np
             
             test_video_path = os.path.join(self.test_dir, 'test_video.mp4')
             

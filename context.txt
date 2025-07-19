@@ -1,0 +1,91 @@
+# AI Video Generation Project - Context & Command History
+# Last Updated: 2025-07-19
+
+## PROJECT OVERVIEW
+- AI-powered video generation system that converts text prompts into videos
+- 4-step pipeline: Text Analysis → Scene Sequencing → Image Generation → Video Transitions
+- Built with Gradio UI for interactive interface with progress tracking and live logs
+
+## COMMAND HISTORY & DECISIONS
+
+1. **Project Initialization**
+   - Command: "initialize git project, we will be working on video generation today using AI models. remember to commit everything you change"
+   - Action: Created git repo, initial README.md, first commit
+
+2. **Plan Documentation**
+   - Command: "okay the plan is, not it somewhere"
+   - Action: Created PLAN.md with project overview and goals
+
+3. **Core Architecture Design** 
+   - Command: "i will give a text prompt in input, it should first analyze the input, then it should idealize a sequence of stills required, then we will generate the images for different still frames, then create the transition video from going to 1 scene to next"
+   - Action: Updated PLAN.md with detailed 4-step workflow pipeline
+
+4. **UI & Progress Requirements**
+   - Command: "you can use gradio to create a simple UI, as well as show me the progress, stills and prompts for each image, if you can create a progress bar, and since i am bit nerdy i need linux type logs running through"
+   - Action: Created comprehensive Gradio interface with:
+     * Progress bars and real-time status updates
+     * Linux-style live log streaming
+     * Still frame preview gallery
+     * Video output display
+     * Interactive prompt input
+
+5. **Environment Setup**
+   - Command: "create and use a conda environment"
+   - Action: Created conda environment with PyTorch, CUDA support, Gradio
+   - Files: environment.yml, run.sh script
+
+6. **Port Configuration**
+   - Command: "change port to 8003"
+   - Action: Updated Gradio server port from 7860 to 8003
+
+7. **Bug Fix**
+   - Issue: TypeError with Gradio 'every' parameter
+   - Action: Fixed deprecated syntax, replaced with gr.Timer
+
+
+1. **Context file creation**
+   - Action: Created context.txt and automatic update system
+
+## CURRENT PROJECT STRUCTURE
+```
+video-generation/
+├── app.py                 # Main Gradio interface
+├── video_generator.py     # Core video generation pipeline
+├── requirements.txt       # Python dependencies
+├── environment.yml        # Conda environment config
+├── run.sh                # Launch script
+├── PLAN.md               # Project plan and architecture
+├── README.md             # Basic project info
+└── context.txt           # This file - project context
+```
+
+## TECHNICAL IMPLEMENTATION STATUS
+✅ Git repository initialized
+✅ Project plan documented
+✅ Gradio UI with progress tracking
+✅ Linux-style log display
+✅ 4-step video generation pipeline
+✅ Conda environment setup
+✅ Still frame preview gallery
+✅ Port configured to 8003
+✅ Bug fixes applied
+
+✅ Context tracking system implemented
+## CURRENT WORKFLOW
+1. **Text Prompt Analysis** - Parse narrative structure, identify scenes
+2. **Scene Sequencing** - Plan still frame sequences with timing
+3. **Image Generation** - Create AI images for each scene (placeholder implementation)
+4. **Video Creation** - Generate video with transitions between stills
+
+## NEXT STEPS & POTENTIAL ENHANCEMENTS
+- Replace placeholder image generation with real AI models (Stable Diffusion, DALL-E)
+- Add more transition effects beyond fade
+- Implement video style controls
+- Add audio generation capabilities
+- Optimize performance for longer sequences
+
+## CONFIGURATION
+- Server: localhost:8003
+- Environment: conda environment 'video-generation'
+- Launch: ./run.sh
+- Dependencies: PyTorch, Gradio, OpenCV, Diffusers, Transformers

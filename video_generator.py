@@ -49,8 +49,18 @@ class VideoGenerator:
             
             self.use_sd = True
         else:
-            logging.warning("Stable Diffusion WebUI unavailable - will use placeholder images")
-            self.use_sd = False
+            # Try to find SD WebUI on other ports
+            found_url = self.sd_client.find_sd_webui()
+            if found_url:
+                self.sd_client.base_url = found_url
+                logging.info(f"✅ Auto-detected SD WebUI at {found_url}")
+                self.use_sd = True
+            else:
+                logging.warning("❌ Stable Diffusion WebUI unavailable - will use placeholder images")
+                logging.warning("💡 To use real image generation:")
+                logging.warning("   1. Start SD WebUI: ./webui.sh --api --port 8001")
+                logging.warning("   2. Or check if it's running on a different port")
+                self.use_sd = False
     
     def analyze_prompt(self, prompt):
         """Analyze text prompt and extract scenes/narrative elements using Mixtral"""

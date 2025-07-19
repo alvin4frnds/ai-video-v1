@@ -15,18 +15,46 @@ class StableDiffusionClient:
         self.session = requests.Session()
         logging.info(f"Initialized Stable Diffusion client with base URL: {base_url}")
     
+    def find_sd_webui(self) -> Optional[str]:
+        """Try to find SD WebUI on common ports"""
+        common_ports = [8001, 7860, 7861, 8000, 8080]
+        logging.info("🔍 Searching for SD WebUI on common ports...")
+        
+        for port in common_ports:
+            test_url = f"http://localhost:{port}"
+            try:
+                response = self.session.get(f"{test_url}/sdapi/v1/options", timeout=3)
+                if response.status_code == 200:
+                    logging.info(f"✅ Found SD WebUI at {test_url}")
+                    return test_url
+                else:
+                    logging.debug(f"❌ Port {port} responded but not SD WebUI")
+            except:
+                logging.debug(f"❌ Port {port} not accessible")
+        
+        logging.warning("❌ SD WebUI not found on any common ports")
+        return None
+    
     def check_connection(self) -> bool:
         """Check if Automatic1111 WebUI is running and accessible"""
         try:
+            logging.info(f"Testing connection to SD WebUI at {self.base_url}")
             response = self.session.get(f"{self.base_url}/sdapi/v1/options", timeout=5)
             if response.status_code == 200:
-                logging.info("Stable Diffusion WebUI connected successfully")
+                logging.info("✅ Stable Diffusion WebUI connected successfully")
                 return True
             else:
-                logging.warning(f"SD WebUI responded with status: {response.status_code}")
+                logging.warning(f"❌ SD WebUI responded with status: {response.status_code}")
                 return False
+        except requests.exceptions.ConnectionError:
+            logging.warning(f"❌ Cannot connect to SD WebUI at {self.base_url} - Connection refused")
+            logging.warning("💡 Make sure SD WebUI is running with: ./webui.sh --api --port 8001")
+            return False
+        except requests.exceptions.Timeout:
+            logging.warning(f"❌ SD WebUI connection timeout at {self.base_url}")
+            return False
         except requests.exceptions.RequestException as e:
-            logging.warning(f"Cannot connect to SD WebUI: {str(e)}")
+            logging.warning(f"❌ SD WebUI connection error: {str(e)}")
             return False
     
     def get_models(self) -> list:

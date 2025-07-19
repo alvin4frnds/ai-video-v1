@@ -14,7 +14,155 @@ class StableDiffusionClient:
     def __init__(self, base_url: str = "http://localhost:8001"):
         self.base_url = base_url
         self.session = requests.Session()
+        self.available_adetailer_models = []
         logging.info(f"Initialized Stable Diffusion client with base URL: {base_url}")
+        
+        # Check for ADetailer availability
+        self._check_adetailer_models()
+    
+    def _check_adetailer_models(self):
+        """Check which ADetailer models are available"""
+        self.preferred_models = [
+            "face_yolov8n.pt",
+            "hand_yolov8n.pt", 
+            "person_yolov8n-seg.pt",
+            "yolov8x-worldv2.pt",
+            "mediapipe_face_full",
+            "mediapipe_face_mesh",
+            "mediapipe_face_mesh_eyes_only"
+        ]
+        
+        try:
+            # Try to get ADetailer models from SD WebUI
+            response = self.session.get(f"{self.base_url}/adetailer/v1/ad_model", timeout=5)
+            if response.status_code == 200:
+                result = response.json()
+                available_models = result.get("ad_model", [])
+                self.available_adetailer_models = [model for model in self.preferred_models if model in available_models]
+                if self.available_adetailer_models:
+                    logging.info(f"🔧 ADetailer models available: {', '.join(self.available_adetailer_models)}")
+                else:
+                    logging.warning("⚠️  ADetailer extension found but no preferred models available")
+                    logging.debug(f"Available models: {available_models}")
+                    logging.debug(f"Preferred models: {self.preferred_models}")
+            else:
+                logging.warning("⚠️  ADetailer extension not found or not responding")
+        except Exception as e:
+            logging.info(f"ℹ️  ADetailer model check skipped: {str(e)}")
+    
+    def get_adetailer_config(self, model_type: str = "comprehensive") -> List[Dict]:
+        """Get ADetailer configuration based on available models"""
+        configs = []
+        
+        if not self.available_adetailer_models:
+            return configs
+        
+        # Face detection configuration
+        if "face_yolov8n.pt" in self.available_adetailer_models:
+            configs.append({
+                "ad_model": "face_yolov8n.pt",
+                "ad_prompt": "perfect face, detailed eyes, clear skin, natural expression, high quality",
+                "ad_negative_prompt": "blurry face, distorted features, bad eyes, deformed face, low quality",
+                "ad_confidence": 0.3,
+                "ad_mask_merge_invert": "None",
+                "ad_mask_blur": 4,
+                "ad_denoising_strength": 0.4,
+                "ad_inpaint_only_masked": True,
+                "ad_inpaint_only_masked_padding": 32,
+                "ad_use_inpaint_width_height": False,
+                "ad_steps": 20,
+                "ad_cfg_scale": 7.0,
+                "ad_checkpoint": "Use same checkpoint",
+                "ad_vae": "Use same VAE",
+                "ad_sampler": "DPM++ 2M SDE",
+                "ad_scheduler": "Karras"
+            })
+        elif "mediapipe_face_full" in self.available_adetailer_models:
+            configs.append({
+                "ad_model": "mediapipe_face_full",
+                "ad_prompt": "perfect face, detailed eyes, clear skin, natural expression",
+                "ad_negative_prompt": "blurry face, distorted features, bad eyes, deformed face",
+                "ad_confidence": 0.5,
+                "ad_mask_blur": 4,
+                "ad_denoising_strength": 0.35,
+                "ad_inpaint_only_masked": True,
+                "ad_inpaint_only_masked_padding": 32,
+                "ad_steps": 20,
+                "ad_cfg_scale": 7.0,
+                "ad_sampler": "DPM++ 2M SDE"
+            })
+        
+        # Hand detection configuration
+        if "hand_yolov8n.pt" in self.available_adetailer_models:
+            configs.append({
+                "ad_model": "hand_yolov8n.pt",
+                "ad_prompt": "perfect hands, detailed fingers, natural pose, correct anatomy",
+                "ad_negative_prompt": "deformed hands, bad fingers, extra fingers, missing fingers, blurry hands",
+                "ad_confidence": 0.3,
+                "ad_mask_blur": 4,
+                "ad_denoising_strength": 0.5,
+                "ad_inpaint_only_masked": True,
+                "ad_inpaint_only_masked_padding": 32,
+                "ad_steps": 20,
+                "ad_cfg_scale": 7.0,
+                "ad_sampler": "DPM++ 2M SDE"
+            })
+        
+        # Person segmentation configuration
+        if "person_yolov8n-seg.pt" in self.available_adetailer_models:
+            configs.append({
+                "ad_model": "person_yolov8n-seg.pt",
+                "ad_prompt": "high quality person, detailed features, natural proportions",
+                "ad_negative_prompt": "low quality, distorted proportions, blurry",
+                "ad_confidence": 0.3,
+                "ad_mask_blur": 4,
+                "ad_denoising_strength": 0.3,
+                "ad_inpaint_only_masked": True,
+                "ad_inpaint_only_masked_padding": 32,
+                "ad_steps": 15,
+                "ad_cfg_scale": 6.0,
+                "ad_sampler": "DPM++ 2M SDE"
+            })
+        elif "yolov8x-worldv2.pt" in self.available_adetailer_models:
+            configs.append({
+                "ad_model": "yolov8x-worldv2.pt",
+                "ad_prompt": "person, high quality, detailed features",
+                "ad_negative_prompt": "low quality, blurry",
+                "ad_confidence": 0.3,
+                "ad_mask_blur": 4,
+                "ad_denoising_strength": 0.25,
+                "ad_inpaint_only_masked": True,
+                "ad_inpaint_only_masked_padding": 32,
+                "ad_steps": 15,
+                "ad_cfg_scale": 6.0,
+                "ad_sampler": "DPM++ 2M SDE"
+            })
+        
+        return configs
+    
+    def _get_adetailer_scripts(self) -> Dict:
+        """Get ADetailer scripts configuration"""
+        adetailer_configs = self.get_adetailer_config()
+        
+        if not adetailer_configs:
+            # Return empty scripts if no ADetailer models available
+            return {}
+        
+        # Build the script args with available models
+        script_args = [
+            True,   # Enable ADetailer
+            False,  # Skip img2img
+        ]
+        script_args.extend(adetailer_configs)
+        
+        model_names = [config.get('ad_model', 'unknown') for config in adetailer_configs]
+        logging.debug(f"🔧 ADetailer configured with models: {', '.join(model_names)}")
+        
+        return {
+            "ADetailer": {
+                "args": script_args
+            }
+        }
     
     def find_sd_webui(self) -> Optional[str]:
         """Try to find SD WebUI on common ports and IPs"""
@@ -119,7 +267,7 @@ class StableDiffusionClient:
     def _generate_batch(self, prompt: str, output_dir: str, batch_size: int, batch_num: int, **kwargs) -> List[str]:
         """Generate a single batch of images"""
         
-        # Default parameters optimized for cyberrealistic model
+        # Default parameters optimized for cyberrealistic model with ADetailer
         payload = {
             "prompt": prompt,
             "negative_prompt": "blurry, low quality, distorted, deformed, ugly, bad anatomy, bad hands, text, watermark, signature",
@@ -135,11 +283,31 @@ class StableDiffusionClient:
             "restore_faces": kwargs.get("restore_faces", True),
             "tiling": False,
             "do_not_save_samples": True,
-            "do_not_save_grid": True
+            "do_not_save_grid": True,
+            
+            # ADetailer configuration for face and hand fixing
+            "alwayson_scripts": self._get_adetailer_scripts()
         }
         
         logging.info(f"⚙️  Batch {batch_num + 1} settings: {payload['width']}x{payload['height']}, {payload['steps']} steps, CFG={payload['cfg_scale']}")
         logging.info(f"🎲 Seed: {payload['seed']}, Sampler: {payload['sampler_name']}")
+        
+        # Log ADetailer status
+        if self.available_adetailer_models:
+            logging.info(f"🔧 ADetailer enabled with models: {', '.join(self.available_adetailer_models)}")
+            face_models = [m for m in self.available_adetailer_models if 'face' in m.lower()]
+            hand_models = [m for m in self.available_adetailer_models if 'hand' in m.lower()]
+            person_models = [m for m in self.available_adetailer_models if 'person' in m.lower() or 'yolov8x' in m.lower()]
+            
+            enhancements = []
+            if face_models: enhancements.append("Face fixing")
+            if hand_models: enhancements.append("Hand fixing") 
+            if person_models: enhancements.append("Person refinement")
+            
+            if enhancements:
+                logging.info(f"✨ Quality enhancements: {', '.join(enhancements)}")
+        else:
+            logging.info(f"ℹ️  ADetailer not available - using standard generation")
         
         try:
             logging.info(f"📡 Sending request to SD WebUI...")
@@ -206,9 +374,9 @@ class StableDiffusionClient:
             return []
 
     def generate_image(self, prompt: str, output_path: str, **kwargs) -> Optional[str]:
-        """Generate image using Stable Diffusion"""
+        """Generate image using Stable Diffusion with ADetailer"""
         
-        # Default parameters optimized for cyberrealistic model
+        # Default parameters optimized for cyberrealistic model with ADetailer
         payload = {
             "prompt": prompt,
             "negative_prompt": "blurry, low quality, distorted, deformed, ugly, bad anatomy, bad hands, text, watermark, signature",
@@ -224,11 +392,20 @@ class StableDiffusionClient:
             "restore_faces": kwargs.get("restore_faces", True),
             "tiling": False,
             "do_not_save_samples": True,
-            "do_not_save_grid": True
+            "do_not_save_grid": True,
+            
+            # ADetailer configuration for single image generation
+            "alwayson_scripts": self._get_adetailer_scripts()
         }
         
         logging.info(f"Generating image with SD: {prompt[:100]}...")
         logging.info(f"Parameters: {payload['width']}x{payload['height']}, steps={payload['steps']}, cfg={payload['cfg_scale']}, seed={payload['seed']}")
+        
+        # Log ADetailer status for single image generation
+        if self.available_adetailer_models:
+            logging.info(f"🔧 ADetailer enabled with models: {', '.join(self.available_adetailer_models)}")
+        else:
+            logging.info(f"ℹ️  ADetailer not available - using standard generation")
         
         try:
             logging.info(f"Sending request to {self.base_url}/sdapi/v1/txt2img")

@@ -48,6 +48,9 @@ class VideoGenerator:
             current_model = self.sd_client.get_current_model()
             logging.info(f"Stable Diffusion WebUI connected - Model: {current_model}")
             
+            # Now that SD is connected, check for ADetailer models
+            self.sd_client._check_adetailer_models()
+            
             # Try to set cyberrealistic model as default
             target_model = "cyberrealistic_v80.safetensors [90389105e4]"
             if target_model not in str(current_model):

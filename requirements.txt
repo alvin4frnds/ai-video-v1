@@ -9,3 +9,6 @@ transformers
 accelerate
 ollama
 requests
+deepface
+mediapipe
+scikit-learn

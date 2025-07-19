@@ -6,8 +6,10 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import time
 from datetime import datetime
+from typing import List, Optional
 from mixtral_client import MixtralClient
 from sd_client import StableDiffusionClient
+from face_analyzer import FaceAnalyzer
 
 class VideoGenerator:
     def __init__(self):
@@ -28,6 +30,9 @@ class VideoGenerator:
         
         # Initialize Stable Diffusion client with network IP
         self.sd_client = StableDiffusionClient(base_url="http://192.168.0.199:8001")
+        
+        # Initialize Face Analyzer
+        self.face_analyzer = FaceAnalyzer()
         
         logging.info("VideoGenerator initialized")
         logging.info(f"Output directory: {self.output_dir}")
@@ -171,50 +176,59 @@ class VideoGenerator:
         return enhanced_prompt
     
     def generate_image(self, scene_data):
-        """Generate image for a scene using Stable Diffusion or placeholder"""
-        logging.info(f"Generating image for scene {scene_data['scene_id']}")
+        """Generate image for a scene using batch generation with face analysis"""
+        logging.info(f"Generating image for scene {scene_data['scene_id']} with batch selection")
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"frame_{scene_data['scene_id']:03d}_{timestamp}.png"
-        filepath = os.path.join(self.frames_dir, filename)
+        final_filename = f"frame_{scene_data['scene_id']:03d}_{timestamp}.png"
+        final_filepath = os.path.join(self.frames_dir, final_filename)
         
         if self.use_sd:
-            # Use Stable Diffusion for real image generation
-            logging.info("Using Stable Diffusion for image generation")
+            # Create batch directory for this scene
+            batch_dir = os.path.join(self.frames_dir, f"batch_scene_{scene_data['scene_id']}")
+            os.makedirs(batch_dir, exist_ok=True)
             
-            # Generate with SD using optimized settings and consistent seed
-            scene_seed = self.base_seed + scene_data['scene_id']  # Different seed per scene but consistent
-            logging.info(f"Using seed {scene_seed} for scene {scene_data['scene_id']} (base: {self.base_seed})")
+            logging.info("Using SD batch generation with face analysis")
             
-            # Try generation with retry on failure
-            max_retries = 2
-            for attempt in range(max_retries):
-                if attempt > 0:
-                    logging.info(f"Retrying SD generation (attempt {attempt + 1}/{max_retries})")
-                    scene_seed += 1000  # Use different seed for retry
+            # Generate batch with consistent seed
+            scene_seed = self.base_seed + scene_data['scene_id']
+            logging.info(f"Generating 6 images for scene {scene_data['scene_id']} (seed: {scene_seed})")
+            
+            batch_paths = self.sd_client.generate_batch_images(
+                prompt=scene_data['prompt'],
+                output_dir=batch_dir,
+                count=6,
+                width=512,
+                height=768,
+                steps=28,
+                cfg_scale=7,
+                sampler="DPM++ 2M SDE",
+                scheduler="Karras",
+                seed=scene_seed
+            )
+            
+            if batch_paths:
+                # Analyze faces in all generated images
+                best_image = self._select_best_image(batch_paths, scene_data)
                 
-                result_path = self.sd_client.generate_image(
-                    prompt=scene_data['prompt'],
-                    output_path=filepath,
-                    width=512,
-                    height=768,
-                    steps=28,
-                    cfg_scale=7,
-                    sampler="DPM++ 2M SDE",
-                    scheduler="Karras",
-                    seed=scene_seed
-                )
-                
-                if result_path:
-                    logging.info(f"✅ SD image generated successfully: {filepath} (attempt {attempt + 1})")
-                    return result_path
+                if best_image:
+                    # Copy best image to final location
+                    import shutil
+                    shutil.copy2(best_image, final_filepath)
+                    logging.info(f"✅ Selected best image: {os.path.basename(best_image)} -> {final_filename}")
+                    
+                    # Clean up batch directory (optional - keep for debugging)
+                    # shutil.rmtree(batch_dir)
+                    
+                    return final_filepath
                 else:
-                    logging.warning(f"❌ SD generation attempt {attempt + 1} failed")
-                    if attempt < max_retries - 1:
-                        logging.info("Will retry with different seed...")
+                    logging.warning("❌ Could not select best image from batch, using first one")
+                    if batch_paths:
+                        import shutil
+                        shutil.copy2(batch_paths[0], final_filepath)
+                        return final_filepath
             
-            logging.warning(f"❌ All SD generation attempts failed for scene {scene_data['scene_id']}, falling back to placeholder")
-            logging.warning(f"Failed prompt was: {scene_data['prompt'][:100]}")
+            logging.warning(f"❌ Batch generation failed for scene {scene_data['scene_id']}, falling back to placeholder")
             # Fall through to placeholder generation
         
         # Fallback: Create placeholder image with scene text
@@ -264,15 +278,99 @@ class VideoGenerator:
         # Add frame border
         draw.rectangle([(10, 10), (502, 758)], outline=(255, 255, 255), width=3)
         
-        img.save(filepath)
+        img.save(final_filepath)
         
-        logging.info(f"Generated placeholder image: {filepath}")
+        logging.info(f"Generated placeholder image: {final_filepath}")
         
         # Simulate processing time for consistency
         if not self.use_sd:
             time.sleep(2)
         
-        return filepath
+        return final_filepath
+    
+    def _select_best_image(self, image_paths: List[str], scene_data: dict) -> Optional[str]:
+        """Select the best image from batch based on face analysis"""
+        if not image_paths:
+            return None
+        
+        logging.info(f"Analyzing {len(image_paths)} generated images for quality and face realism")
+        
+        # Analyze faces in all images
+        image_analysis = []
+        for i, img_path in enumerate(image_paths):
+            face_data = self.face_analyzer.detect_faces(img_path)
+            analysis = {
+                'path': img_path,
+                'face_data': face_data,
+                'filename': os.path.basename(img_path)
+            }
+            image_analysis.append(analysis)
+            
+            logging.info(f"Image {i+1}: {analysis['filename']} - "
+                        f"faces: {face_data.get('face_count', 0)}, "
+                        f"quality: {face_data.get('quality_score', 0):.2f}")
+        
+        # Score each image
+        scored_images = []
+        for analysis in image_analysis:
+            score = self._calculate_image_score(analysis, scene_data)
+            scored_images.append((score, analysis))
+            
+            logging.info(f"Image {analysis['filename']}: overall score {score:.3f}")
+        
+        # Sort by score (highest first)
+        scored_images.sort(key=lambda x: x[0], reverse=True)
+        
+        if scored_images:
+            best_score, best_analysis = scored_images[0]
+            logging.info(f"Selected best image: {best_analysis['filename']} with score {best_score:.3f}")
+            return best_analysis['path']
+        
+        return None
+    
+    def _calculate_image_score(self, analysis: dict, scene_data: dict) -> float:
+        """Calculate overall score for an image"""
+        face_data = analysis['face_data']
+        
+        # Base quality score from face analysis
+        face_quality = face_data.get('quality_score', 0.0)
+        
+        # Face count score
+        face_count = face_data.get('face_count', 0)
+        if 'person' in scene_data.get('description', '').lower() or 'woman' in scene_data.get('description', '').lower():
+            # Scenes with people should have faces
+            if face_count >= 1:
+                face_count_score = 1.0
+            else:
+                face_count_score = 0.3  # Penalty for missing faces
+        else:
+            # Scenes without people mentioned
+            face_count_score = 0.8  # Neutral score
+        
+        # Face realism score
+        face_realism = 1.0 if face_data.get('has_realistic_face', False) else 0.5
+        
+        # Detection method score (prefer MediaPipe over OpenCV)
+        methods = face_data.get('detection_methods', [])
+        if 'MediaPipe' in methods:
+            detection_score = 1.0
+        elif 'OpenCV' in methods:
+            detection_score = 0.8
+        else:
+            detection_score = 0.6
+        
+        # Error penalty
+        error_penalty = 0.0 if 'error' not in face_data else 0.5
+        
+        # Combined score
+        total_score = (
+            face_quality * 0.35 +
+            face_count_score * 0.25 +
+            face_realism * 0.25 +
+            detection_score * 0.15
+        ) - error_penalty
+        
+        return max(0.0, min(1.0, total_score))
     
     def create_video_with_transitions(self, image_data):
         """Create video with transitions between still frames"""

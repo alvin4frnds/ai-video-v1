@@ -22,3 +22,6 @@ dependencies:
     - xformers
     - ollama
     - requests
+    - deepface
+    - mediapipe
+    - scikit-learn

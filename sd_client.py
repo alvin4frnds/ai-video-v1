@@ -5,7 +5,8 @@ import base64
 from io import BytesIO
 from PIL import Image
 import os
-from typing import Dict, Optional
+from datetime import datetime
+from typing import Dict, Optional, List
 
 class StableDiffusionClient:
     """Client for interacting with Automatic1111 Stable Diffusion WebUI"""
@@ -77,6 +78,94 @@ class StableDiffusionClient:
             logging.error(f"Error getting models: {str(e)}")
             return []
     
+    def generate_batch_images(self, prompt: str, output_dir: str, count: int = 6, **kwargs) -> List[str]:
+        """Generate multiple images in batches for selection"""
+        generated_paths = []
+        
+        # Generate in 2 batches of 3 for memory efficiency
+        batch_size = 3
+        num_batches = (count + batch_size - 1) // batch_size
+        
+        for batch_num in range(num_batches):
+            remaining = count - len(generated_paths)
+            current_batch_size = min(batch_size, remaining)
+            
+            if current_batch_size <= 0:
+                break
+                
+            logging.info(f"Generating batch {batch_num + 1}/{num_batches} with {current_batch_size} images")
+            
+            # Generate batch
+            batch_paths = self._generate_batch(prompt, output_dir, current_batch_size, batch_num, **kwargs)
+            generated_paths.extend(batch_paths)
+        
+        logging.info(f"Generated {len(generated_paths)} images total")
+        return generated_paths
+    
+    def _generate_batch(self, prompt: str, output_dir: str, batch_size: int, batch_num: int, **kwargs) -> List[str]:
+        """Generate a single batch of images"""
+        
+        # Default parameters optimized for cyberrealistic model
+        payload = {
+            "prompt": prompt,
+            "negative_prompt": "blurry, low quality, distorted, deformed, ugly, bad anatomy, bad hands, text, watermark, signature",
+            "width": kwargs.get("width", 512),
+            "height": kwargs.get("height", 768),
+            "steps": kwargs.get("steps", 28),
+            "cfg_scale": kwargs.get("cfg_scale", 7),
+            "sampler_name": kwargs.get("sampler", "DPM++ 2M SDE"),
+            "scheduler": kwargs.get("scheduler", "Karras"),
+            "batch_size": batch_size,
+            "n_iter": 1,
+            "seed": kwargs.get("seed", -1),
+            "restore_faces": kwargs.get("restore_faces", True),
+            "tiling": False,
+            "do_not_save_samples": True,
+            "do_not_save_grid": True
+        }
+        
+        logging.info(f"Generating batch: {prompt[:100]}...")
+        logging.info(f"Batch parameters: {payload['width']}x{payload['height']}, steps={payload['steps']}, batch_size={batch_size}")
+        
+        try:
+            response = self.session.post(
+                f"{self.base_url}/sdapi/v1/txt2img",
+                json=payload,
+                timeout=180  # Longer timeout for batches
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                
+                if 'images' in result and len(result['images']) > 0:
+                    batch_paths = []
+                    
+                    for i, image_b64 in enumerate(result['images']):
+                        # Generate unique filename for each image in batch
+                        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                        filename = f"batch_{batch_num}_{i}_{timestamp}.png"
+                        output_path = os.path.join(output_dir, filename)
+                        
+                        # Decode and save image
+                        image_data = base64.b64decode(image_b64)
+                        with open(output_path, 'wb') as f:
+                            f.write(image_data)
+                        
+                        batch_paths.append(output_path)
+                        logging.info(f"Saved batch image: {output_path}")
+                    
+                    return batch_paths
+                else:
+                    logging.error(f"No images in batch response")
+                    return []
+            else:
+                logging.error(f"Batch generation failed: {response.status_code}")
+                return []
+                
+        except Exception as e:
+            logging.error(f"Error in batch generation: {str(e)}")
+            return []
+
     def generate_image(self, prompt: str, output_path: str, **kwargs) -> Optional[str]:
         """Generate image using Stable Diffusion"""
         

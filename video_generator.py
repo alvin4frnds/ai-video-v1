@@ -94,9 +94,29 @@ class VideoGenerator:
         img = Image.new('RGB', (1024, 576), color=(50, 50, 100))
         draw = ImageDraw.Draw(img)
         
-        # Add scene text
+        # Add scene text with sans-serif font
         try:
-            font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
+            # Try common sans-serif fonts in order of preference
+            font_paths = [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 
+                "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
+                "/System/Library/Fonts/Helvetica.ttc",  # macOS
+                "C:/Windows/Fonts/arial.ttf",  # Windows
+            ]
+            
+            font = None
+            for font_path in font_paths:
+                try:
+                    font = ImageFont.truetype(font_path, 24)
+                    logging.info(f"Using font: {font_path}")
+                    break
+                except:
+                    continue
+            
+            if font is None:
+                font = ImageFont.load_default()
+                logging.warning("Using default font - sans-serif fonts not found")
         except:
             font = ImageFont.load_default()
         

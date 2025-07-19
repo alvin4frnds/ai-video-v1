@@ -4,52 +4,18 @@ import threading
 from datetime import datetime
 import logging
 import sys
-from io import StringIO
-import queue
 import os
 import random
 import shutil
 
 from video_generator import VideoGenerator
 
-class LogCapture:
-    def __init__(self):
-        self.log_queue = queue.Queue()
-        self.setup_logging()
-    
-    def setup_logging(self):
-        logging.basicConfig(
-            level=logging.INFO,
-            format='[%(asctime)s] %(levelname)s: %(message)s',
-            datefmt='%H:%M:%S'
-        )
-        
-        handler = QueueHandler(self.log_queue)
-        handler.setLevel(logging.INFO)
-        formatter = logging.Formatter('[%(asctime)s] %(levelname)s: %(message)s', '%H:%M:%S')
-        handler.setFormatter(formatter)
-        
-        logger = logging.getLogger()
-        logger.addHandler(handler)
-    
-    def get_logs(self):
-        logs = []
-        while not self.log_queue.empty():
-            try:
-                logs.append(self.log_queue.get_nowait())
-            except queue.Empty:
-                break
-        return logs
-
-class QueueHandler(logging.Handler):
-    def __init__(self, log_queue):
-        super().__init__()
-        self.log_queue = log_queue
-    
-    def emit(self, record):
-        self.log_queue.put(self.format(record))
-
-log_capture = LogCapture()
+# Simple logging setup for console output
+logging.basicConfig(
+    level=logging.INFO,
+    format='[%(asctime)s] %(levelname)s: %(message)s',
+    datefmt='%H:%M:%S'
+)
 
 def generate_random_test_prompt():
     """Generate a random test prompt for empty input"""
@@ -141,21 +107,14 @@ def generate_video_pipeline(prompt, progress=gr.Progress()):
         progress(1.0, "Video generation complete!")
         logging.info(f"Video generation complete! Saved to: {video_path}")
         
-        return video_path, generated_images, get_current_logs()
+        return video_path, generated_images, "Video generation completed"
         
     except Exception as e:
         logging.error(f"Error during video generation: {str(e)}")
         progress(1.0, f"Error: {str(e)}")
-        return None, [], get_current_logs()
+        return None, [], f"Error: {str(e)}"
 
-def get_current_logs():
-    """Get current log entries for display"""
-    logs = log_capture.get_logs()
-    return "\n".join(logs) if logs else "No logs yet..."
-
-def update_logs():
-    """Update log display in real-time"""
-    return get_current_logs()
+# Removed log display functions since logs UI component was removed
 
 def create_still_preview(images):
     """Create preview gallery of generated stills"""
@@ -307,17 +266,7 @@ with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome(
             )
     
     with gr.Row():
-        with gr.Column():
-            video_output = gr.Video(label="Generated Video")
-        
-        with gr.Column():
-            logs_output = gr.Textbox(
-                label="🖥️ System Logs",
-                lines=15,
-                value="[SYSTEM] Ready for video generation...",
-                interactive=False,
-                show_copy_button=True
-            )
+        video_output = gr.Video(label="Generated Video")
     
     with gr.Row():
         still_gallery = gr.Gallery(
@@ -330,24 +279,19 @@ with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome(
             height="auto"
         )
     
-    # Auto-refresh logs every 2 seconds
-    timer = gr.Timer(2)
-    timer.tick(
-        fn=update_logs,
-        outputs=logs_output
-    )
+    # Remove timer since we no longer have logs display
     
     # Generate button click handler
     def handle_generation(prompt):
         video_path, generated_images, logs = generate_video_pipeline(prompt)
         gallery_data = create_still_preview(generated_images)
-        return video_path, gallery_data, logs
+        return video_path, gallery_data
     
     # Generate button click handler
     generate_btn.click(
         fn=handle_generation,
         inputs=[prompt_input],
-        outputs=[video_output, still_gallery, logs_output]
+        outputs=[video_output, still_gallery]
     )
     
     # Random test button click handler
@@ -355,11 +299,11 @@ with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome(
         random_prompt = generate_random_test_prompt()
         video_path, generated_images, logs = generate_video_pipeline(random_prompt)
         gallery_data = create_still_preview(generated_images)
-        return random_prompt, video_path, gallery_data, logs
+        return random_prompt, video_path, gallery_data
     
     random_btn.click(
         fn=handle_random_test,
-        outputs=[prompt_input, video_output, still_gallery, logs_output]
+        outputs=[prompt_input, video_output, still_gallery]
     )
     
     # Clean button click handler

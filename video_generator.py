@@ -177,22 +177,25 @@ class VideoGenerator:
     
     def generate_image(self, scene_data):
         """Generate image for a scene using batch generation with face analysis"""
-        logging.info(f"Generating image for scene {scene_data['scene_id']} with batch selection")
+        scene_id = scene_data['scene_id']
+        logging.info(f"🎬 Starting image generation for Scene {scene_id}")
+        logging.info(f"📝 Scene description: {scene_data['description'][:100]}{'...' if len(scene_data['description']) > 100 else ''}")
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        final_filename = f"frame_{scene_data['scene_id']:03d}_{timestamp}.png"
+        final_filename = f"frame_{scene_id:03d}_{timestamp}.png"
         final_filepath = os.path.join(self.frames_dir, final_filename)
         
         if self.use_sd:
             # Create batch directory for this scene
-            batch_dir = os.path.join(self.frames_dir, f"batch_scene_{scene_data['scene_id']}")
+            batch_dir = os.path.join(self.frames_dir, f"batch_scene_{scene_id}")
             os.makedirs(batch_dir, exist_ok=True)
             
-            logging.info("Using SD batch generation with face analysis")
+            logging.info(f"🤖 Using SD WebUI with batch generation and face analysis")
             
             # Generate batch with consistent seed
-            scene_seed = self.base_seed + scene_data['scene_id']
-            logging.info(f"Generating 6 images for scene {scene_data['scene_id']} (seed: {scene_seed})")
+            scene_seed = self.base_seed + scene_id
+            logging.info(f"🎲 Scene {scene_id} seed: {scene_seed} (base: {self.base_seed} + scene: {scene_id})")
+            logging.info(f"📁 Batch directory: {os.path.basename(batch_dir)}")
             
             batch_paths = self.sd_client.generate_batch_images(
                 prompt=scene_data['prompt'],
@@ -208,27 +211,34 @@ class VideoGenerator:
             )
             
             if batch_paths:
+                logging.info(f"🔎 Starting face analysis and selection for {len(batch_paths)} images...")
+                
                 # Analyze faces in all generated images
                 best_image = self._select_best_image(batch_paths, scene_data)
                 
                 if best_image:
                     # Copy best image to final location
                     import shutil
+                    logging.info(f"📋 Copying selected image to final location...")
                     shutil.copy2(best_image, final_filepath)
-                    logging.info(f"✅ Selected best image: {os.path.basename(best_image)} -> {final_filename}")
+                    
+                    best_filename = os.path.basename(best_image)
+                    logging.info(f"✅ Scene {scene_id} complete: {best_filename} → {final_filename}")
+                    logging.info(f"💾 Final image saved: {final_filepath}")
                     
                     # Clean up batch directory (optional - keep for debugging)
                     # shutil.rmtree(batch_dir)
                     
                     return final_filepath
                 else:
-                    logging.warning("❌ Could not select best image from batch, using first one")
+                    logging.warning("⚠️  Face analysis failed to select best image, using first available")
                     if batch_paths:
                         import shutil
                         shutil.copy2(batch_paths[0], final_filepath)
+                        logging.info(f"📄 Using fallback image: {os.path.basename(batch_paths[0])} → {final_filename}")
                         return final_filepath
             
-            logging.warning(f"❌ Batch generation failed for scene {scene_data['scene_id']}, falling back to placeholder")
+            logging.warning(f"💥 Batch generation failed for Scene {scene_id}, falling back to placeholder")
             # Fall through to placeholder generation
         
         # Fallback: Create placeholder image with scene text
@@ -293,39 +303,67 @@ class VideoGenerator:
         if not image_paths:
             return None
         
-        logging.info(f"Analyzing {len(image_paths)} generated images for quality and face realism")
+        logging.info(f"🔍 Analyzing {len(image_paths)} generated images for quality and face realism...")
         
         # Analyze faces in all images
         image_analysis = []
         for i, img_path in enumerate(image_paths):
+            filename = os.path.basename(img_path)
+            logging.info(f"👤 Analyzing faces in image {i+1}/{len(image_paths)}: {filename}")
+            
             face_data = self.face_analyzer.detect_faces(img_path)
             analysis = {
                 'path': img_path,
                 'face_data': face_data,
-                'filename': os.path.basename(img_path)
+                'filename': filename
             }
             image_analysis.append(analysis)
             
-            logging.info(f"Image {i+1}: {analysis['filename']} - "
-                        f"faces: {face_data.get('face_count', 0)}, "
-                        f"quality: {face_data.get('quality_score', 0):.2f}")
+            # Detailed face analysis results
+            face_count = face_data.get('face_count', 0)
+            quality_score = face_data.get('quality_score', 0)
+            has_realistic = face_data.get('has_realistic_face', False)
+            methods = face_data.get('detection_methods', [])
+            
+            if face_count > 0:
+                logging.info(f"   ✅ Found {face_count} face(s), quality: {quality_score:.2f}, realistic: {has_realistic}")
+                logging.info(f"   🔬 Detection methods: {', '.join(methods) if methods else 'None'}")
+                
+                # Log individual face details
+                for j, face in enumerate(face_data.get('faces', [])):
+                    conf = face.get('confidence', 0)
+                    method = face.get('method', 'Unknown')
+                    area = face.get('area', 0)
+                    logging.info(f"      Face {j+1}: {method} detection, confidence: {conf:.2f}, area: {area}px")
+            else:
+                error_msg = face_data.get('error', 'Unknown issue')
+                logging.info(f"   ❌ No faces detected - {error_msg}")
+        
+        logging.info(f"📊 Scoring all {len(image_analysis)} images...")
         
         # Score each image
         scored_images = []
-        for analysis in image_analysis:
+        for i, analysis in enumerate(image_analysis):
             score = self._calculate_image_score(analysis, scene_data)
             scored_images.append((score, analysis))
             
-            logging.info(f"Image {analysis['filename']}: overall score {score:.3f}")
+            logging.info(f"📈 Image {i+1} ({analysis['filename']}): overall score {score:.3f}")
         
         # Sort by score (highest first)
         scored_images.sort(key=lambda x: x[0], reverse=True)
         
         if scored_images:
+            # Log ranking
+            logging.info(f"🏆 Image ranking (best to worst):")
+            for i, (score, analysis) in enumerate(scored_images):
+                rank_icon = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"{i+1}."
+                logging.info(f"   {rank_icon} {analysis['filename']}: {score:.3f}")
+            
             best_score, best_analysis = scored_images[0]
-            logging.info(f"Selected best image: {best_analysis['filename']} with score {best_score:.3f}")
+            logging.info(f"🎯 Selected best image: {best_analysis['filename']} with score {best_score:.3f}")
             return best_analysis['path']
         
+        logging.warning("⚠️  No images could be scored properly")
         return None
     
     def _calculate_image_score(self, analysis: dict, scene_data: dict) -> float:

@@ -86,6 +86,9 @@ class StableDiffusionClient:
         batch_size = 3
         num_batches = (count + batch_size - 1) // batch_size
         
+        logging.info(f"🎨 Starting batch image generation: {count} images in {num_batches} batches")
+        logging.info(f"📋 Prompt: {prompt[:100]}{'...' if len(prompt) > 100 else ''}")
+        
         for batch_num in range(num_batches):
             remaining = count - len(generated_paths)
             current_batch_size = min(batch_size, remaining)
@@ -93,13 +96,24 @@ class StableDiffusionClient:
             if current_batch_size <= 0:
                 break
                 
-            logging.info(f"Generating batch {batch_num + 1}/{num_batches} with {current_batch_size} images")
+            logging.info(f"🔄 Batch {batch_num + 1}/{num_batches}: Generating {current_batch_size} images...")
             
             # Generate batch
             batch_paths = self._generate_batch(prompt, output_dir, current_batch_size, batch_num, **kwargs)
-            generated_paths.extend(batch_paths)
+            
+            if batch_paths:
+                generated_paths.extend(batch_paths)
+                logging.info(f"✅ Batch {batch_num + 1} completed: {len(batch_paths)} images generated")
+                for i, path in enumerate(batch_paths):
+                    logging.info(f"   📸 Image {len(generated_paths) - len(batch_paths) + i + 1}: {os.path.basename(path)}")
+            else:
+                logging.warning(f"❌ Batch {batch_num + 1} failed: No images generated")
         
-        logging.info(f"Generated {len(generated_paths)} images total")
+        if generated_paths:
+            logging.info(f"🎉 Batch generation complete: {len(generated_paths)}/{count} images successful")
+        else:
+            logging.error(f"💥 Batch generation failed: No images were generated")
+        
         return generated_paths
     
     def _generate_batch(self, prompt: str, output_dir: str, batch_size: int, batch_num: int, **kwargs) -> List[str]:
@@ -124,21 +138,29 @@ class StableDiffusionClient:
             "do_not_save_grid": True
         }
         
-        logging.info(f"Generating batch: {prompt[:100]}...")
-        logging.info(f"Batch parameters: {payload['width']}x{payload['height']}, steps={payload['steps']}, batch_size={batch_size}")
+        logging.info(f"⚙️  Batch {batch_num + 1} settings: {payload['width']}x{payload['height']}, {payload['steps']} steps, CFG={payload['cfg_scale']}")
+        logging.info(f"🎲 Seed: {payload['seed']}, Sampler: {payload['sampler_name']}")
         
         try:
+            logging.info(f"📡 Sending request to SD WebUI...")
+            import time
+            start_time = time.time()
+            
             response = self.session.post(
                 f"{self.base_url}/sdapi/v1/txt2img",
                 json=payload,
                 timeout=180  # Longer timeout for batches
             )
             
+            generation_time = time.time() - start_time
+            logging.info(f"⏱️  SD WebUI response received in {generation_time:.1f}s")
+            
             if response.status_code == 200:
                 result = response.json()
                 
                 if 'images' in result and len(result['images']) > 0:
                     batch_paths = []
+                    logging.info(f"🖼️  Processing {len(result['images'])} generated images...")
                     
                     for i, image_b64 in enumerate(result['images']):
                         # Generate unique filename for each image in batch
@@ -146,24 +168,41 @@ class StableDiffusionClient:
                         filename = f"batch_{batch_num}_{i}_{timestamp}.png"
                         output_path = os.path.join(output_dir, filename)
                         
+                        logging.info(f"💾 Saving image {i + 1}/{len(result['images'])}: {filename}")
+                        
                         # Decode and save image
                         image_data = base64.b64decode(image_b64)
                         with open(output_path, 'wb') as f:
                             f.write(image_data)
                         
+                        file_size = len(image_data) / 1024  # KB
+                        logging.info(f"   ✅ Saved: {filename} ({file_size:.1f} KB)")
+                        
                         batch_paths.append(output_path)
-                        logging.info(f"Saved batch image: {output_path}")
+                    
+                    # Log generation info if available
+                    if 'info' in result:
+                        try:
+                            info = json.loads(result['info'])
+                            if 'seed' in info:
+                                logging.info(f"🎲 Actual seed used: {info['seed']}")
+                        except:
+                            pass
                     
                     return batch_paths
                 else:
-                    logging.error(f"No images in batch response")
+                    logging.error(f"❌ No images in batch response from SD WebUI")
                     return []
             else:
-                logging.error(f"Batch generation failed: {response.status_code}")
+                logging.error(f"❌ SD WebUI batch generation failed: HTTP {response.status_code}")
+                logging.error(f"   Response: {response.text[:200]}...")
                 return []
                 
+        except requests.exceptions.Timeout:
+            logging.error(f"⏰ Batch generation timed out after 180 seconds")
+            return []
         except Exception as e:
-            logging.error(f"Error in batch generation: {str(e)}")
+            logging.error(f"💥 Error in batch generation: {str(e)}")
             return []
 
     def generate_image(self, prompt: str, output_path: str, **kwargs) -> Optional[str]:

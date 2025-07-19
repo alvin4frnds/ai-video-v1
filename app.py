@@ -99,17 +99,39 @@ def generate_video_pipeline(prompt, progress=gr.Progress()):
         generated_images = []
         
         for i, scene in enumerate(scene_plan):
-            frame_progress = 0.2 + (0.6 * (i + 1) / len(scene_plan))
-            progress(frame_progress, f"Generating image {i+1}/{len(scene_plan)}: {scene['description'][:50]}...")
-            logging.info(f"Generating frame {i+1}/{len(scene_plan)}: {scene['description']}")
+            scene_progress_start = 0.2 + (0.6 * i / len(scene_plan))
+            scene_progress_end = 0.2 + (0.6 * (i + 1) / len(scene_plan))
+            
+            # Update progress for scene start
+            progress(scene_progress_start, f"🎬 Scene {i+1}/{len(scene_plan)}: Starting batch generation...")
+            logging.info(f"=" * 60)
+            logging.info(f"🎬 SCENE {i+1}/{len(scene_plan)} - BATCH IMAGE GENERATION")
+            logging.info(f"📝 Description: {scene['description']}")
+            logging.info(f"🎯 Enhanced prompt: {scene['prompt'][:150]}{'...' if len(scene['prompt']) > 150 else ''}")
+            logging.info(f"=" * 60)
+            
+            # Sub-progress updates for batch generation
+            progress(scene_progress_start + 0.1 * (scene_progress_end - scene_progress_start), 
+                    f"📸 Scene {i+1}: Generating 6 candidate images...")
             
             image_path = generator.generate_image(scene)
+            
+            # Sub-progress for face analysis
+            progress(scene_progress_start + 0.8 * (scene_progress_end - scene_progress_start), 
+                    f"🔍 Scene {i+1}: Analyzing faces and selecting best image...")
+            
             generated_images.append({
                 'path': image_path,
                 'prompt': scene['prompt'],
-                'description': scene['description']
+                'description': scene['description'],
+                'duration': scene.get('duration', 3.0),
+                'transition_type': scene.get('transition_type', 'fade')
             })
-            logging.info(f"Generated image saved to: {image_path}")
+            
+            # Complete scene progress
+            progress(scene_progress_end, f"✅ Scene {i+1} complete: {os.path.basename(image_path) if image_path else 'No image generated'}")
+            logging.info(f"✅ SCENE {i+1} COMPLETED - Final image: {image_path}")
+            logging.info("")  # Add spacing between scenes
         
         # Step 4: Create transitions (80-100%)
         progress(0.8, "Creating video transitions...")

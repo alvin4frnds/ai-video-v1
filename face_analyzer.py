@@ -51,10 +51,18 @@ class FaceAnalyzer:
     def detect_faces(self, image_path: str) -> Dict:
         """Detect faces in image using multiple methods"""
         try:
+            filename = os.path.basename(image_path)
+            logging.debug(f"🔍 Loading image for face detection: {filename}")
+            
             # Load image
             img = cv2.imread(image_path)
             if img is None:
+                logging.error(f"❌ Could not load image: {filename}")
                 return {'error': 'Could not load image', 'face_count': 0}
+            
+            img_height, img_width = img.shape[:2]
+            img_size = f"{img_width}x{img_height}"
+            logging.debug(f"📐 Image loaded: {img_size}, size: {os.path.getsize(image_path)/1024:.1f} KB")
             
             rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
             gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -68,29 +76,43 @@ class FaceAnalyzer:
             }
             
             # MediaPipe detection (primary)
+            logging.debug(f"🤖 Running MediaPipe face detection...")
             mp_faces = self._detect_faces_mediapipe(rgb_img)
             if mp_faces:
                 results['faces'].extend(mp_faces)
                 results['detection_methods'].append('MediaPipe')
+                logging.debug(f"   ✅ MediaPipe found {len(mp_faces)} face(s)")
+            else:
+                logging.debug(f"   ❌ MediaPipe found no faces")
             
             # OpenCV detection (fallback/validation)
+            logging.debug(f"🔧 Running OpenCV face detection...")
             cv_faces = self._detect_faces_opencv(gray_img, img.shape)
             if cv_faces:
                 results['detection_methods'].append('OpenCV')
                 # Merge with MediaPipe results (avoid duplicates)
-                results['faces'].extend(self._filter_duplicate_faces(results['faces'], cv_faces))
+                filtered_cv_faces = self._filter_duplicate_faces(results['faces'], cv_faces)
+                results['faces'].extend(filtered_cv_faces)
+                logging.debug(f"   ✅ OpenCV found {len(cv_faces)} face(s), {len(filtered_cv_faces)} new")
+            else:
+                logging.debug(f"   ❌ OpenCV found no faces")
             
             results['face_count'] = len(results['faces'])
             
             if results['face_count'] > 0:
+                logging.debug(f"📊 Calculating face quality for {results['face_count']} face(s)...")
                 results['quality_score'] = self._calculate_face_quality(results['faces'], img.shape)
                 results['has_realistic_face'] = results['quality_score'] > 0.6
+                
+                quality_emoji = "🟢" if results['quality_score'] > 0.7 else "🟡" if results['quality_score'] > 0.4 else "🔴"
+                logging.debug(f"   {quality_emoji} Quality score: {results['quality_score']:.2f}")
+            else:
+                logging.debug(f"⚪ No faces detected in image")
             
-            logging.info(f"Face analysis for {os.path.basename(image_path)}: {results['face_count']} faces, quality: {results['quality_score']:.2f}")
             return results
             
         except Exception as e:
-            logging.error(f"Error in face detection: {str(e)}")
+            logging.error(f"💥 Error in face detection for {os.path.basename(image_path)}: {str(e)}")
             return {'error': str(e), 'face_count': 0, 'quality_score': 0.0}
     
     def _detect_faces_mediapipe(self, rgb_img: np.ndarray) -> List[Dict]:

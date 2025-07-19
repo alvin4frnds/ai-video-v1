@@ -70,6 +70,10 @@
 1. **Improve scene expansion with different actions**
    - Action: Updated scene generation to create varied actions/poses instead of camera angles, with context-aware expansions
 
+
+1. **Add YmdH seed for consistency**
+   - Action: Implemented YmdH format seeds for consistent image generation and prompt choices within same hour
+
 ## CURRENT PROJECT STRUCTURE
 ```
 video-generation/
@@ -101,6 +105,7 @@ video-generation/
 ✅ Network SD WebUI configured and tested
 ✅ Random test prompt feature added
 ✅ Smart action-based scene expansion implemented
+✅ YmdH seed consistency implemented
 ## CURRENT WORKFLOW
 1. **Text Prompt Analysis** - Parse narrative structure, identify scenes
 2. **Scene Sequencing** - Plan still frame sequences with timing

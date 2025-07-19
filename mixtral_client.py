@@ -1,6 +1,7 @@
 import requests
 import json
 import logging
+import random
 from typing import List, Dict, Optional
 
 class MixtralClient:
@@ -10,6 +11,7 @@ class MixtralClient:
         self.base_url = base_url
         self.model = "mixtral"
         self.session = requests.Session()
+        self.base_seed = None  # Will be set by VideoGenerator
         logging.info(f"Initialized Mixtral client with base URL: {base_url}")
     
     def check_connection(self) -> bool:
@@ -266,6 +268,11 @@ Return scenes as a simple numbered list."""
     
     def _expand_single_scene(self, original_scene: str, context: str) -> List[str]:
         """Expand a single scene into multiple actions based on context"""
+        
+        # Use seed for consistent randomization if available
+        if self.base_seed:
+            random.seed(self.base_seed)
+            logging.info(f"Using seed {self.base_seed} for consistent scene expansion")
         
         # Extract key elements
         if 'walking' in context:

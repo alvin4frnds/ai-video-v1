@@ -55,11 +55,15 @@ def generate_random_test_prompt():
     colors = ["red", "blue", "green", "yellow", "purple", "pink", "black", "white", "orange", "brown", "gray"]
     locations = ["sidewalk", "street", "park", "mall", "market"]
     
+    # Use YmdH seed for consistent randomization within the hour
+    seed = int(datetime.now().strftime("%Y%m%d%H"))
+    random.seed(seed)
+    
     color = random.choice(colors)
     location = random.choice(locations)
     
     prompt = f"woman wearing {color} walking {location}"
-    logging.info(f"Generated random test prompt: {prompt}")
+    logging.info(f"Generated random test prompt: {prompt} (seed: {seed})")
     return prompt
 
 def generate_video_pipeline(prompt, progress=gr.Progress()):

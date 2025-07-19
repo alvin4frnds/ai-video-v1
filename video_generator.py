@@ -18,8 +18,13 @@ class VideoGenerator:
         os.makedirs(self.frames_dir, exist_ok=True)
         os.makedirs(self.videos_dir, exist_ok=True)
         
+        # Generate YmdH format seed for consistent results within the hour
+        self.base_seed = int(datetime.now().strftime("%Y%m%d%H"))
+        logging.info(f"Using base seed: {self.base_seed} (YmdH format for consistency)")
+        
         # Initialize Mixtral client
         self.mixtral = MixtralClient()
+        self.mixtral.base_seed = self.base_seed  # Share seed for consistency
         
         # Initialize Stable Diffusion client with network IP
         self.sd_client = StableDiffusionClient(base_url="http://192.168.0.199:8001")
@@ -130,7 +135,9 @@ class VideoGenerator:
             # Use Stable Diffusion for real image generation
             logging.info("Using Stable Diffusion for image generation")
             
-            # Generate with SD using optimized settings
+            # Generate with SD using optimized settings and consistent seed
+            scene_seed = self.base_seed + scene_data['scene_id']  # Different seed per scene but consistent
+            logging.info(f"Using seed {scene_seed} for scene {scene_data['scene_id']} (base: {self.base_seed})")
             result_path = self.sd_client.generate_image(
                 prompt=scene_data['prompt'],
                 output_path=filepath,
@@ -139,7 +146,8 @@ class VideoGenerator:
                 steps=50,
                 cfg_scale=7,
                 sampler="DPM++ 2M SDE",
-                scheduler="Karras"
+                scheduler="Karras",
+                seed=scene_seed
             )
             
             if result_path:

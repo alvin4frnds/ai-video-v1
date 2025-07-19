@@ -23,12 +23,15 @@
 - `mixtral_client.py` - LLM integration for scene analysis and character consistency
 - `sd_client.py` - Stable Diffusion WebUI API client with ADetailer integration
 - `face_analyzer.py` - MediaPipe/OpenCV face detection, quality scoring, and clothing similarity analysis
+- `face_selector.py` - Random face selection from in/individual/ directory for Roop face swapping
 
 ### Current Configuration
 - **Mixtral LLM**: Ollama at localhost:11434 (with fallback generation)
 - **Stable Diffusion**: WebUI at 192.168.0.199:8001
 - **Model**: cyberrealistic_v80.safetensors (preferred) or cyberrealisticPony_v8.safetensors
 - **ADetailer Models**: face_yolov8n.pt, hand_yolov8n.pt, person_yolov8n-seg.pt, yolov8x-worldv2.pt, mediapipe_face_full, mediapipe_face_mesh, mediapipe_face_mesh_eyes_only
+- **Roop Extension**: sd-webui-roop for face swapping (ultimate character consistency)
+- **Face Sources**: in/individual/{name}/Images directory (ayushi, nitanshi)
 - **Conda Environment**: ai-video-gen (recommended)
 
 ## Recent Major Fixes (July 2025)
@@ -80,32 +83,56 @@
 - RGB color analysis and reporting
 - Visual consistency indicators in UI (✅⚠️❌)
 
+### 7. Roop Face Swapping Integration ✅ (July 19, 2025)
+**Problem**: Even with character consistency, slight facial variations still occurred
+**Solution**:
+- Integrated Roop extension for 100% face consistency
+- Random face selection from in/individual/{name}/Images directory
+- Seed-based reproducible face selection using YmdH format
+- Automatic Roop + ADetailer combination for maximum quality
+**Implementation**:
+- FaceSelector class for managing face images from multiple people
+- Enhanced SD client with Roop API integration
+- Batch face swapping with consistent seed variations
+- Comprehensive face validation and error handling
+**Result**: Achieves ultimate character consistency with exact same face across all 6 frames
+
 ## Technical Architecture
 
 ### Pipeline Flow
 1. **Text Input** → Random test prompt if empty
-2. **Mixtral Analysis** → 6 coherent story frames (with fallback)
-3. **Character Generation** → Consistent character profile
-4. **Prompt Enhancement** → Scene-specific image prompts
-5. **Batch Image Generation** → 6 candidates per scene
-6. **Face & Clothing Analysis** → Best image selection with consistency scoring
-7. **Video Creation** → H.264 with transitions
+2. **Face Selection** → Random face from in/individual/ directory (seed-based)
+3. **Mixtral Analysis** → 6 coherent story frames (with fallback)
+4. **Character Generation** → Consistent character profile
+5. **Prompt Enhancement** → Scene-specific image prompts
+6. **Roop Face Swapping** → Batch generation with selected face (if available)
+7. **Face & Clothing Analysis** → Best image selection with consistency scoring
+8. **Video Creation** → H.264 with transitions
 
 ### Output Structure
 ```
 output/
 ├── frames/
-│   ├── batch_scene_N/     # 6 candidate images per scene
-│   └── frame_NNN_*.png    # Selected final frames
+│   ├── batch_scene_N/     # 6 candidate images per scene (with Roop face swap)
+│   └── frame_NNN_*.png    # Selected final frames with consistent face
 ├── videos/
 │   └── generated_video_*_h264.mp4
 └── .gitkeep
+
+in/
+└── individual/
+    ├── ayushi/            # Face images for ayushi
+    │   └── image (N).png
+    └── nitanshi/          # Face images for nitanshi
+        └── image (N).png
 ```
 
 ### Seeds and Consistency
 - **YmdH Format**: Base seed changes hourly for temporal consistency
 - **Scene Seeds**: Base seed + scene number for variation within consistency
+- **Face Selection**: Same base seed used for reproducible face selection
 - **Character Profiles**: Shared across all scenes in a video
+- **Roop Face Swapping**: Exact same face across all scenes when available
 
 ## Dependencies
 - **Python**: gradio, opencv-python, pillow, numpy, requests, mediapipe, deepface, scikit-learn
@@ -159,3 +186,5 @@ Recent Major Updates:
 - Clothing similarity analysis system - IMPLEMENTED
 - Batch image analysis UI with detailed scoring - ADDED
 - Enhanced image selection with clothing consistency (25% weight) - ACTIVE
+- Roop face swapping integration for ultimate consistency - IMPLEMENTED
+- Random face selection from in/individual/ directory - ACTIVE

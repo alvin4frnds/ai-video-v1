@@ -83,11 +83,11 @@ class TestMixtralClient(unittest.TestCase):
                 # Each scene should have required keys
                 for scene in result:
                     # Check if it's a fallback scene (string) or parsed scene (dict)
-            if isinstance(scene, dict):
-                self.assertIn('description', scene)
-            else:
-                # Fallback returns strings, which is expected
-                self.assertIsInstance(scene, str)
+                    if isinstance(scene, dict):
+                        self.assertIn('description', scene)
+                    else:
+                        # Fallback returns strings, which is expected
+                        self.assertIsInstance(scene, str)
                     self.assertIn('duration', scene)
 
 class TestStableDiffusionClient(unittest.TestCase):

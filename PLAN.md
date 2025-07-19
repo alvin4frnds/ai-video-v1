@@ -1,19 +1,35 @@
 # AI Video Generation Project Plan
 
 ## Project Overview
-Developing an AI-powered video generation system.
+Developing an AI-powered video generation system that converts text prompts into videos through scene-based generation.
+
+## Workflow Pipeline
+1. **Text Prompt Analysis** - Parse and understand input text
+2. **Scene Sequencing** - Break down into logical still frame sequences  
+3. **Image Generation** - Create AI-generated images for each still frame
+4. **Transition Creation** - Generate smooth video transitions between scenes
+
+## Technical Architecture
+- Prompt analyzer module
+- Scene planning engine
+- Image generation interface (AI models)
+- Video transition generator
+- Main orchestration pipeline
 
 ## Goals
-- Implement video generation using AI models
-- Create user-friendly interface for video creation
-- Support various video formats and styles
+- Convert text descriptions to coherent video sequences
+- Generate high-quality still frames for key scenes
+- Create smooth transitions between different scenes
+- Support various narrative styles and visual themes
 
-## Next Steps
-- Define specific requirements
-- Choose AI models and frameworks
-- Design system architecture
-- Implement core functionality
+## Implementation Steps
+1. Design text prompt analysis system
+2. Create scene sequence planning module
+3. Implement image generation for still frames
+4. Build transition video creation system
+5. Integrate all components into main pipeline
 
 ## Notes
-- This plan will be updated as requirements become clearer
-- Focus on creating a robust and scalable solution
+- Focus on creating logical scene progressions
+- Ensure visual consistency across generated frames
+- Optimize for smooth narrative flow

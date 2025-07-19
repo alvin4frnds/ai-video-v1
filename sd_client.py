@@ -100,37 +100,42 @@ class StableDiffusionClient:
         }
         
         logging.info(f"Generating image with SD: {prompt[:100]}...")
-        logging.info(f"Parameters: {payload['width']}x{payload['height']}, steps={payload['steps']}, cfg={payload['cfg_scale']}")
+        logging.info(f"Parameters: {payload['width']}x{payload['height']}, steps={payload['steps']}, cfg={payload['cfg_scale']}, seed={payload['seed']}")
         
         try:
+            logging.info(f"Sending request to {self.base_url}/sdapi/v1/txt2img")
             response = self.session.post(
                 f"{self.base_url}/sdapi/v1/txt2img",
                 json=payload,
                 timeout=120  # 2 minutes timeout for generation
             )
+            logging.info(f"SD API response status: {response.status_code}")
             
             if response.status_code == 200:
                 result = response.json()
+                logging.info(f"SD API returned result with keys: {list(result.keys())}")
                 
                 if 'images' in result and len(result['images']) > 0:
+                    logging.info(f"SD API returned {len(result['images'])} images")
                     # Decode base64 image
                     image_data = base64.b64decode(result['images'][0])
+                    logging.info(f"Decoded image data size: {len(image_data)} bytes")
                     
                     # Save image
                     with open(output_path, 'wb') as f:
                         f.write(image_data)
                     
-                    logging.info(f"SD image generated successfully: {output_path}")
+                    logging.info(f"✅ SD image generated successfully: {output_path}")
                     
                     # Log generation info if available
                     if 'info' in result:
                         info = json.loads(result['info'])
                         if 'seed' in info:
-                            logging.info(f"Generated with seed: {info['seed']}")
+                            logging.info(f"Generated with actual seed: {info['seed']}")
                     
                     return output_path
                 else:
-                    logging.error("No images returned from SD WebUI")
+                    logging.error(f"❌ No images returned from SD WebUI. Result: {result}")
                     return None
             else:
                 logging.error(f"SD generation failed: {response.status_code} - {response.text}")

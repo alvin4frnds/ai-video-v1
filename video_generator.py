@@ -52,7 +52,26 @@ class VideoGenerator:
                 else:
                     logging.warning("Could not switch to cyberrealistic model, using current model")
             
-            self.use_sd = True
+            # Test SD generation to make sure it's working
+            logging.info("Testing SD generation with simple prompt...")
+            test_path = os.path.join(self.frames_dir, "test_generation.png")
+            test_result = self.sd_client.generate_image(
+                prompt="test image, simple portrait",
+                output_path=test_path,
+                width=512,
+                height=768,
+                steps=5,  # Fast test
+                cfg_scale=7,
+                seed=self.base_seed
+            )
+            
+            if test_result:
+                logging.info("✅ SD test generation successful")
+                os.remove(test_path)  # Clean up test file
+                self.use_sd = True
+            else:
+                logging.warning("❌ SD test generation failed - using placeholder mode")
+                self.use_sd = False
         else:
             # Try to find SD WebUI on other ports
             found_url = self.sd_client.find_sd_webui()
@@ -138,24 +157,37 @@ class VideoGenerator:
             # Generate with SD using optimized settings and consistent seed
             scene_seed = self.base_seed + scene_data['scene_id']  # Different seed per scene but consistent
             logging.info(f"Using seed {scene_seed} for scene {scene_data['scene_id']} (base: {self.base_seed})")
-            result_path = self.sd_client.generate_image(
-                prompt=scene_data['prompt'],
-                output_path=filepath,
-                width=512,
-                height=768,
-                steps=50,
-                cfg_scale=7,
-                sampler="DPM++ 2M SDE",
-                scheduler="Karras",
-                seed=scene_seed
-            )
             
-            if result_path:
-                logging.info(f"SD image generated successfully: {filepath}")
-                return result_path
-            else:
-                logging.warning("SD generation failed, falling back to placeholder")
-                # Fall through to placeholder generation
+            # Try generation with retry on failure
+            max_retries = 2
+            for attempt in range(max_retries):
+                if attempt > 0:
+                    logging.info(f"Retrying SD generation (attempt {attempt + 1}/{max_retries})")
+                    scene_seed += 1000  # Use different seed for retry
+                
+                result_path = self.sd_client.generate_image(
+                    prompt=scene_data['prompt'],
+                    output_path=filepath,
+                    width=512,
+                    height=768,
+                    steps=50,
+                    cfg_scale=7,
+                    sampler="DPM++ 2M SDE",
+                    scheduler="Karras",
+                    seed=scene_seed
+                )
+                
+                if result_path:
+                    logging.info(f"✅ SD image generated successfully: {filepath} (attempt {attempt + 1})")
+                    return result_path
+                else:
+                    logging.warning(f"❌ SD generation attempt {attempt + 1} failed")
+                    if attempt < max_retries - 1:
+                        logging.info("Will retry with different seed...")
+            
+            logging.warning(f"❌ All SD generation attempts failed for scene {scene_data['scene_id']}, falling back to placeholder")
+            logging.warning(f"Failed prompt was: {scene_data['prompt'][:100]}")
+            # Fall through to placeholder generation
         
         # Fallback: Create placeholder image with scene text
         logging.info("Generating placeholder image")

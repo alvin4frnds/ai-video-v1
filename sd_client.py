@@ -545,23 +545,26 @@ class StableDiffusionClient:
         """Generate image with Roop face swapping"""
         
         if not self.roop_available:
-            logging.error("Roop extension not available - falling back to regular generation")
-            return self.generate_image(prompt, output_path, width, height, steps, cfg_scale, sampler, scheduler, seed, negative_prompt)
+            logging.warning("Roop extension not available - falling back to regular generation")
+            return self._fallback_to_regular_generation(prompt, output_path, width, height, steps, cfg_scale, sampler, scheduler, seed, negative_prompt)
         
         # Encode face image
         face_b64 = self._encode_image_to_base64(face_image_path)
         if not face_b64:
-            logging.error(f"Failed to encode face image: {face_image_path}")
-            return False
+            logging.error(f"Failed to encode face image: {face_image_path} - falling back to regular generation")
+            return self._fallback_to_regular_generation(prompt, output_path, width, height, steps, cfg_scale, sampler, scheduler, seed, negative_prompt)
         
         logging.info(f"🎭 Generating image with Roop face swap...")
         logging.info(f"Face source: {os.path.basename(face_image_path)}")
         logging.info(f"Parameters: {width}x{height}, steps={steps}, cfg={cfg_scale}, seed={seed}")
         
-        # Build payload with Roop extension
+        # Enhanced negative prompt for single person constraint
+        enhanced_negative_prompt = f"{negative_prompt}, multiple people, crowd, group, two people, three people, many people, other person, additional person, background people, extra people, duplicate person"
+        
+        # Simplified Roop configuration to avoid face_swapper initialization issues
         payload = {
             "prompt": prompt,
-            "negative_prompt": negative_prompt,
+            "negative_prompt": enhanced_negative_prompt,
             "width": width,
             "height": height,
             "steps": steps,
@@ -571,47 +574,47 @@ class StableDiffusionClient:
             "seed": seed,
             "batch_size": 1,
             "n_iter": 1,
-            "restore_faces": False,  # Disable since we're using Roop
+            "restore_faces": False,  # Let Roop handle face restoration
             "tiling": False,
-            "do_not_save_samples": False,
-            "do_not_save_grid": False,
+            "do_not_save_samples": True,
+            "do_not_save_grid": True,
             
-            # Roop extension parameters
+            # Simplified Roop extension parameters
             "alwayson_scripts": {
                 "roop": {
                     "args": [
-                        face_b64,          # Source face image (base64)
-                        True,              # Enable Roop
-                        "0",               # Face index (0 for first face)
-                        face_b64,          # Reference image (same as source)
-                        True,              # Restore face after swap
-                        0.8,               # Face restoration visibility
-                        None,              # Codeformer weight
-                        True,              # Restore face first
-                        "CodeFormer",     # Upscaler
-                        1,                 # Upscaler scale
-                        1,                 # Upscaler visibility
-                        False,             # Swap in source
-                        True,              # Swap in generated
-                        1,                 # Console logging level
-                        0,                 # Gender detection source
-                        0,                 # Gender detection target
-                        False,             # Save original
-                        0.6,               # Face mask correction
-                        0,                 # Face mask blur
-                        False,             # Face mask padding
-                        "max"              # Macs face parsing
+                        face_b64,           # Source face image (base64)
+                        True,               # Enable Roop
+                        "0",                # Face index (first face detected)
+                        face_b64,           # Reference image (same as source for consistency)
+                        True,               # Restore face after swap
+                        0.7,                # Face restoration visibility (lower value for stability)
+                        0.8,                # Codeformer weight (if available)
+                        False,              # Restore face first (avoid conflicts)
+                        "CodeFormer",       # Upscaler method
+                        1,                  # Upscaler scale
+                        0.8,                # Upscaler visibility
+                        False,              # Swap in source image
+                        True,               # Swap in generated image
+                        0,                  # Console logging level (reduced)
+                        0,                  # Gender detection source
+                        0,                  # Gender detection target
+                        False,              # Save original before swap
+                        0.5,                # Face mask correction (lower for stability)
+                        0,                  # Face mask blur
+                        False,              # Face mask padding
+                        "max"               # Face parsing model
                     ]
                 }
             }
         }
         
-        # Add ADetailer if available (but less critical with Roop)
+        # Only add ADetailer for hand fixing (avoid face conflicts with Roop)
         if self.available_adetailer_models:
-            adetailer_scripts = self._get_adetailer_scripts()
-            if adetailer_scripts:
-                payload["alwayson_scripts"].update(adetailer_scripts)
-                logging.info(f"🔧 ADetailer + Roop combination enabled")
+            hand_only_scripts = self._get_hand_only_adetailer_scripts()
+            if hand_only_scripts:
+                payload["alwayson_scripts"].update(hand_only_scripts)
+                logging.info(f"🔧 Hand-only ADetailer + Roop combination enabled")
         
         try:
             logging.info(f"📡 Sending Roop face swap request to {self.base_url}/sdapi/v1/txt2img")
@@ -642,21 +645,87 @@ class StableDiffusionClient:
                     
                     # Log generation info if available
                     if 'info' in result:
-                        info = json.loads(result['info'])
-                        actual_seed = info.get('seed', 'Unknown')
-                        logging.info(f"🎲 Generated with actual seed: {actual_seed}")
+                        try:
+                            info = json.loads(result['info'])
+                            actual_seed = info.get('seed', 'Unknown')
+                            logging.info(f"🎲 Generated with actual seed: {actual_seed}")
+                        except:
+                            pass
                     
                     return True
                 else:
-                    logging.error("❌ No images returned from SD API")
-                    return False
+                    logging.error("❌ No images returned from SD API - falling back to regular generation")
+                    return self._fallback_to_regular_generation(prompt, output_path, width, height, steps, cfg_scale, sampler, scheduler, seed, negative_prompt)
             else:
-                logging.error(f"❌ SD API error: {response.status_code} - {response.text}")
-                return False
+                logging.error(f"❌ SD API error: {response.status_code} - falling back to regular generation")
+                logging.debug(f"Response text: {response.text[:500]}")
+                return self._fallback_to_regular_generation(prompt, output_path, width, height, steps, cfg_scale, sampler, scheduler, seed, negative_prompt)
                 
         except Exception as e:
-            logging.error(f"💥 Error in Roop face swap generation: {str(e)}")
-            return False
+            logging.error(f"💥 Error in Roop face swap generation: {str(e)} - falling back to regular generation")
+            return self._fallback_to_regular_generation(prompt, output_path, width, height, steps, cfg_scale, sampler, scheduler, seed, negative_prompt)
+    
+    def _fallback_to_regular_generation(self, prompt: str, output_path: str, width: int, height: int, 
+                                       steps: int, cfg_scale: float, sampler: str, scheduler: str, 
+                                       seed: int, negative_prompt: str) -> bool:
+        """Fallback to regular generation when Roop fails"""
+        logging.info("🔄 Falling back to regular image generation with character consistency")
+        
+        result = self.generate_image(
+            prompt=prompt,
+            output_path=output_path,
+            width=width,
+            height=height,
+            steps=steps,
+            cfg_scale=cfg_scale,
+            sampler=sampler,
+            scheduler=scheduler,
+            seed=seed,
+            negative_prompt=negative_prompt
+        )
+        
+        return result is not None
+    
+    def _get_hand_only_adetailer_scripts(self) -> Dict:
+        """Get ADetailer configuration with only hand fixing to avoid face conflicts with Roop"""
+        if not self.available_adetailer_models:
+            return {}
+        
+        configs = []
+        
+        # Only add hand detection to avoid conflicts with Roop face swapping
+        if "hand_yolov8n.pt" in self.available_adetailer_models:
+            configs.append({
+                "ad_model": "hand_yolov8n.pt",
+                "ad_prompt": "single person hands, perfect hands, detailed fingers, natural pose, correct anatomy, one person only",
+                "ad_negative_prompt": "deformed hands, bad fingers, extra fingers, missing fingers, blurry hands, multiple people, other person hands",
+                "ad_confidence": 0.3,
+                "ad_mask_blur": 4,
+                "ad_denoising_strength": 0.5,
+                "ad_inpaint_only_masked": True,
+                "ad_inpaint_only_masked_padding": 32,
+                "ad_steps": 20,
+                "ad_cfg_scale": 7.0,
+                "ad_sampler": "DPM++ 2M SDE"
+            })
+        
+        if not configs:
+            return {}
+        
+        # Build the script args
+        script_args = [
+            True,   # Enable ADetailer
+            False,  # Skip img2img
+        ]
+        script_args.extend(configs)
+        
+        logging.debug(f"🔧 Hand-only ADetailer configured for Roop compatibility")
+        
+        return {
+            "ADetailer": {
+                "args": script_args
+            }
+        }
     
     def generate_batch_with_face_swap(self, prompt: str, face_image_path: str, output_dir: str,
                                     count: int = 6, width: int = 512, height: int = 768, 
@@ -668,7 +737,26 @@ class StableDiffusionClient:
         logging.info(f"Face source: {os.path.basename(face_image_path)}")
         logging.info(f"Generating {count} images with face consistency")
         
+        # Check if Roop is available before starting batch
+        if not self.roop_available:
+            logging.warning("🔄 Roop not available - falling back to regular batch generation with character consistency")
+            return self.generate_batch_images(
+                prompt=prompt,
+                output_dir=output_dir,
+                count=count,
+                width=width,
+                height=height,
+                steps=steps,
+                cfg_scale=cfg_scale,
+                sampler=sampler,
+                scheduler=scheduler,
+                seed=seed,
+                negative_prompt=negative_prompt
+            )
+        
         batch_paths = []
+        failed_attempts = 0
+        max_failures = 3  # Allow some failures before falling back completely
         
         # Generate images in 2 batches of 3 (as per existing system)
         batch_size = 3
@@ -705,8 +793,35 @@ class StableDiffusionClient:
                 if success:
                     batch_paths.append(output_path)
                     logging.info(f"✅ Generated image {len(batch_paths)}/{count}: {filename}")
+                    failed_attempts = 0  # Reset failure counter on success
                 else:
-                    logging.error(f"❌ Failed to generate image {batch_num}_{i}")
+                    failed_attempts += 1
+                    logging.error(f"❌ Failed to generate image {batch_num}_{i} (failure #{failed_attempts})")
+                    
+                    # If too many failures, fall back to regular generation for remaining images
+                    if failed_attempts >= max_failures:
+                        logging.warning(f"🔄 Too many Roop failures ({failed_attempts}), falling back to regular generation for remaining images")
+                        remaining_count = count - len(batch_paths)
+                        if remaining_count > 0:
+                            fallback_paths = self.generate_batch_images(
+                                prompt=prompt,
+                                output_dir=output_dir,
+                                count=remaining_count,
+                                width=width,
+                                height=height,
+                                steps=steps,
+                                cfg_scale=cfg_scale,
+                                sampler=sampler,
+                                scheduler=scheduler,
+                                seed=seed + len(batch_paths),
+                                negative_prompt=negative_prompt
+                            )
+                            batch_paths.extend(fallback_paths)
+                        break
+            
+            # Break outer loop if we hit max failures
+            if failed_attempts >= max_failures:
+                break
         
         logging.info(f"🎭 Batch generation complete: {len(batch_paths)}/{count} images generated with face swap")
         return batch_paths

@@ -33,15 +33,33 @@ def generate_random_test_prompt():
     logging.info(f"Generated random test prompt: {prompt} (seed: {seed})")
     return prompt
 
-def generate_video_pipeline(prompt, progress=gr.Progress()):
+def generate_video_pipeline(prompt, candidate_count, clean_before_run, progress=gr.Progress()):
     """Main video generation pipeline with progress tracking"""
+    
+    # Clean output frames directory if requested
+    if clean_before_run:
+        frames_dir = "output/frames"
+        if os.path.exists(frames_dir):
+            try:
+                import shutil
+                # Remove all contents in frames directory except .gitkeep
+                for item in os.listdir(frames_dir):
+                    if item != '.gitkeep':
+                        item_path = os.path.join(frames_dir, item)
+                        if os.path.isdir(item_path):
+                            shutil.rmtree(item_path)
+                        else:
+                            os.remove(item_path)
+                logging.info(f"🧹 Cleaned frames directory before generation")
+            except Exception as e:
+                logging.warning(f"Failed to clean frames directory: {e}")
     
     # Check if prompt is empty and generate random test prompt
     if not prompt or prompt.strip() == "":
         prompt = generate_random_test_prompt()
         logging.info("Empty prompt detected, using random test prompt")
     
-    generator = VideoGenerator()
+    generator = VideoGenerator(candidate_count=int(candidate_count))
     
     # Initialize progress
     progress(0, "Starting video generation pipeline...")
@@ -80,7 +98,7 @@ def generate_video_pipeline(prompt, progress=gr.Progress()):
             
             # Sub-progress updates for batch generation
             progress(scene_progress_start + 0.1 * (scene_progress_end - scene_progress_start), 
-                    f"📸 Scene {i+1}: Generating 6 candidate images...")
+                    f"📸 Scene {i+1}: Generating {int(candidate_count)} candidate images...")
             
             image_result = generator.generate_image(scene)
             
@@ -249,6 +267,196 @@ def create_batch_analysis_display(batch_analysis):
     
     return "\n".join(report_lines), all_image_paths
 
+def create_batch_analysis_table(batch_analysis):
+    """Create HTML table view of batch images with clickable thumbnails"""
+    if not batch_analysis:
+        return "<p>No batch analysis data available.</p>"
+    
+    # Group by scene
+    scenes = {}
+    for analysis in batch_analysis:
+        scene_id = analysis.get('scene_id', 0)
+        if scene_id not in scenes:
+            scenes[scene_id] = []
+        scenes[scene_id].append(analysis)
+    
+    # Create HTML table
+    html_parts = []
+    html_parts.append("""
+    <style>
+    .batch-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    }
+    .batch-table th, .batch-table td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: center;
+        vertical-align: middle;
+    }
+    .batch-table th {
+        background-color: #f2f2f2;
+        font-weight: bold;
+        position: sticky;
+        top: 0;
+    }
+    .batch-table .thumbnail {
+        width: 80px;
+        height: 80px;
+        object-fit: cover;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: transform 0.2s;
+    }
+    .batch-table .thumbnail:hover {
+        transform: scale(1.1);
+    }
+    .batch-table .selected {
+        background-color: #fff3cd;
+        border-color: #ffeaa7;
+        color: #856404;
+    }
+    .batch-table .rank-1 { 
+        background-color: #fff8e1;
+        color: #8a6914;
+    }
+    .batch-table .rank-2 { 
+        background-color: #f3e5f5;
+        color: #6f42c1;
+    }
+    .batch-table .rank-3 { 
+        background-color: #e8f5e8;
+        color: #155724;
+    }
+    .score-high { color: #28a745; font-weight: bold; }
+    .score-medium { color: #ffc107; font-weight: bold; }
+    .score-low { color: #dc3545; font-weight: bold; }
+    .consistency-icon { font-size: 14px; }
+    .scene-header {
+        background-color: #e9ecef;
+        font-weight: bold;
+        text-align: left;
+        padding: 12px 8px;
+    }
+    </style>
+    """)
+    
+    html_parts.append('<table class="batch-table">')
+    html_parts.append("""
+    <thead>
+        <tr>
+            <th>Thumbnail</th>
+            <th>Rank</th>
+            <th>Filename</th>
+            <th>Overall Score</th>
+            <th>Face Quality</th>
+            <th>Face Count</th>
+            <th>Realistic</th>
+            <th>Clothing Consistency</th>
+            <th>Roop Used</th>
+            <th>Detection Methods</th>
+        </tr>
+    </thead>
+    <tbody>
+    """)
+    
+    for scene_id in sorted(scenes.keys()):
+        scene_data = scenes[scene_id]
+        if not scene_data:
+            continue
+            
+        # Scene header row
+        scene_desc = scene_data[0].get('scene_description', f'Scene {scene_id}')
+        html_parts.append(f"""
+        <tr>
+            <td colspan="10" class="scene-header">
+                🎭 Scene {scene_id}: {scene_desc[:80]}{'...' if len(scene_desc) > 80 else ''}
+            </td>
+        </tr>
+        """)
+        
+        # Sort by score (highest first)
+        scene_data.sort(key=lambda x: x.get('score', 0), reverse=True)
+        
+        for i, analysis in enumerate(scene_data):
+            rank_icon = "🥇" if i == 0 else "🥈" if i == 1 else "🥉" if i == 2 else f"{i+1}"
+            rank_class = f"rank-{i+1}" if i < 3 else ""
+            selected_class = "selected" if analysis.get('is_selected', False) else ""
+            
+            filename = analysis.get('filename', 'Unknown')
+            score = analysis.get('score', 0)
+            face_count = analysis.get('face_count', 0)
+            quality_score = analysis.get('quality_score', 0)
+            has_realistic = analysis.get('has_realistic_face', False)
+            methods = analysis.get('detection_methods', [])
+            clothing_consistency = analysis.get('clothing_consistency', 0.5)
+            roop_face_used = analysis.get('roop_face_used', False)
+            selected_face_person = analysis.get('selected_face_person', None)
+            img_path = analysis.get('path', '')
+            
+            # Score color coding
+            if score >= 0.7:
+                score_class = "score-high"
+            elif score >= 0.4:
+                score_class = "score-medium"
+            else:
+                score_class = "score-low"
+            
+            # Clothing consistency icon
+            if clothing_consistency > 0.7:
+                clothing_icon = "✅"
+            elif clothing_consistency > 0.4:
+                clothing_icon = "⚠️"
+            else:
+                clothing_icon = "❌"
+            
+            # Thumbnail
+            if img_path and os.path.exists(img_path):
+                # Use relative path for web serving (Gradio should serve these automatically)
+                import base64
+                try:
+                    with open(img_path, 'rb') as img_file:
+                        img_data = base64.b64encode(img_file.read()).decode()
+                    file_ext = img_path.lower().split('.')[-1]
+                    mime_type = f"image/{file_ext}" if file_ext in ['png', 'jpg', 'jpeg'] else "image/png"
+                    data_url = f"data:{mime_type};base64,{img_data}"
+                    thumbnail_html = f'<img src="{data_url}" class="thumbnail" onclick="this.style.transform=this.style.transform?\'\':\' scale(3)\'; this.style.zIndex=this.style.zIndex?\'\':\' 1000\'; this.style.position=this.style.position?\'\':\' relative\';" title="Click to zoom">'
+                except Exception:
+                    thumbnail_html = f'<span style="color: #999;" title="{img_path}">📷</span>'
+            else:
+                thumbnail_html = '<span style="color: #999;">No image</span>'
+            
+            html_parts.append(f"""
+            <tr class="{rank_class} {selected_class}">
+                <td>{thumbnail_html}</td>
+                <td>{rank_icon}{'⭐' if analysis.get('is_selected', False) else ''}</td>
+                <td title="{filename}">{filename[:20]}{'...' if len(filename) > 20 else ''}</td>
+                <td class="{score_class}">{score:.3f}</td>
+                <td>{quality_score:.3f}</td>
+                <td>{face_count}</td>
+                <td>{'✅' if has_realistic else '❌'}</td>
+                <td><span class="consistency-icon">{clothing_icon}</span> {clothing_consistency:.3f}</td>
+                <td>{'✅' if roop_face_used else '❌'}{f' ({selected_face_person})' if roop_face_used and selected_face_person else ''}</td>
+                <td title="{', '.join(methods) if methods else 'None'}">{', '.join(methods[:2]) if methods else 'None'}{'...' if len(methods) > 2 else ''}</td>
+            </tr>
+            """)
+    
+    html_parts.append("</tbody></table>")
+    
+    # Add summary info
+    total_images = len(batch_analysis)
+    selected_images = sum(1 for analysis in batch_analysis if analysis.get('is_selected', False))
+    avg_score = sum(analysis.get('score', 0) for analysis in batch_analysis) / total_images if total_images > 0 else 0
+    
+    html_parts.append(f"""
+    <div style="margin-top: 16px; padding: 12px; background-color: #f8f9fa; border-radius: 4px;">
+        <strong>Summary:</strong> {total_images} images generated, {selected_images} selected, average score: {avg_score:.3f}
+    </div>
+    """)
+    
+    return "".join(html_parts)
+
 def create_batch_summary_stats(batch_analysis):
     """Create summary statistics from batch analysis"""
     if not batch_analysis:
@@ -399,6 +607,22 @@ with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome(
                 lines=4
             )
             with gr.Row():
+                with gr.Column(scale=2):
+                    candidate_count = gr.Number(
+                        label="Candidate Images per Scene",
+                        value=2,
+                        minimum=1,
+                        maximum=10,
+                        step=1,
+                        info="Number of images to generate per scene for selection (default: 2, original: 6)"
+                    )
+                with gr.Column(scale=2):
+                    clean_before_run = gr.Checkbox(
+                        label="Clean Output Before Run",
+                        value=False,
+                        info="Automatically clean frames directory before generation"
+                    )
+            with gr.Row():
                 generate_btn = gr.Button("🚀 Generate Video", variant="primary", size="lg")
                 random_btn = gr.Button("🎲 Random Test", variant="secondary", size="sm")
                 clean_btn = gr.Button("🧹 Clean Output", variant="secondary", size="sm")
@@ -437,8 +661,14 @@ with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome(
             )
     
     with gr.Row():
+        batch_table = gr.HTML(
+            label="Image Comparison Table with Clickable Thumbnails",
+            value="<p>Generate a video to see the comparison table...</p>"
+        )
+    
+    with gr.Row():
         batch_gallery = gr.Gallery(
-            label="All Generated Images with Face & Clothing Analysis (36 total: 6 per scene)",
+            label="All Generated Images with Face & Clothing Analysis",
             show_label=True,
             elem_id="batch_gallery",
             columns=6,
@@ -450,42 +680,45 @@ with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome(
     # Remove timer since we no longer have logs display
     
     # Generate button click handler
-    def handle_generation(prompt):
-        video_path, generated_images, batch_analysis, logs = generate_video_pipeline(prompt)
+    def handle_generation(prompt, candidate_count, clean_before_run):
+        video_path, generated_images, batch_analysis, logs = generate_video_pipeline(prompt, candidate_count, clean_before_run)
         gallery_data = create_still_preview(generated_images)
         batch_report, batch_images = create_batch_analysis_display(batch_analysis)
         batch_stats = create_batch_summary_stats(batch_analysis)
-        return video_path, gallery_data, batch_report, batch_images, batch_stats
+        batch_table_html = create_batch_analysis_table(batch_analysis)
+        return video_path, gallery_data, batch_report, batch_images, batch_stats, batch_table_html
     
     # Generate button click handler
     generate_btn.click(
         fn=handle_generation,
-        inputs=[prompt_input],
-        outputs=[video_output, still_gallery, batch_report, batch_gallery, batch_stats]
+        inputs=[prompt_input, candidate_count, clean_before_run],
+        outputs=[video_output, still_gallery, batch_report, batch_gallery, batch_stats, batch_table]
     )
     
     # Random test button click handler
-    def handle_random_test():
+    def handle_random_test(candidate_count, clean_before_run):
         random_prompt = generate_random_test_prompt()
-        video_path, generated_images, batch_analysis, logs = generate_video_pipeline(random_prompt)
+        video_path, generated_images, batch_analysis, logs = generate_video_pipeline(random_prompt, candidate_count, clean_before_run)
         gallery_data = create_still_preview(generated_images)
         batch_report, batch_images = create_batch_analysis_display(batch_analysis)
         batch_stats = create_batch_summary_stats(batch_analysis)
-        return random_prompt, video_path, gallery_data, batch_report, batch_images, batch_stats
+        batch_table_html = create_batch_analysis_table(batch_analysis)
+        return random_prompt, video_path, gallery_data, batch_report, batch_images, batch_stats, batch_table_html
     
     random_btn.click(
         fn=handle_random_test,
-        outputs=[prompt_input, video_output, still_gallery, batch_report, batch_gallery, batch_stats]
+        inputs=[candidate_count, clean_before_run],
+        outputs=[prompt_input, video_output, still_gallery, batch_report, batch_gallery, batch_stats, batch_table]
     )
     
     # Clean button click handler
     def handle_clean():
         message, video, gallery = clean_output_folder()
-        return message, video, gallery, "Generate a video to see detailed face analysis...", [], "Generate a video to see face detection statistics..."
+        return message, video, gallery, "Generate a video to see detailed face analysis...", [], "Generate a video to see face detection statistics...", "<p>Generate a video to see the comparison table...</p>"
     
     clean_btn.click(
         fn=handle_clean,
-        outputs=[progress_display, video_output, still_gallery, batch_report, batch_gallery, batch_stats]
+        outputs=[progress_display, video_output, still_gallery, batch_report, batch_gallery, batch_stats, batch_table]
     )
 
 if __name__ == "__main__":

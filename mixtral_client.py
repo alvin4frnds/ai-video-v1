@@ -222,7 +222,7 @@ Create a comprehensive character description focusing on visual consistency for 
         response = self.session.post(
             f"{self.base_url}/api/chat",
             json=payload,
-            timeout=30
+            timeout=100
         )
         
         if response.status_code == 200:

@@ -13,10 +13,11 @@ from face_analyzer import FaceAnalyzer
 from face_selector import FaceSelector
 
 class VideoGenerator:
-    def __init__(self):
+    def __init__(self, candidate_count=6):
         self.output_dir = "output"
         self.frames_dir = os.path.join(self.output_dir, "frames")
         self.videos_dir = os.path.join(self.output_dir, "videos")
+        self.candidate_count = candidate_count
         
         os.makedirs(self.frames_dir, exist_ok=True)
         os.makedirs(self.videos_dir, exist_ok=True)
@@ -24,6 +25,7 @@ class VideoGenerator:
         # Generate YmdH format seed for consistent results within the hour
         self.base_seed = int(datetime.now().strftime("%Y%m%d%H"))
         logging.info(f"Using base seed: {self.base_seed} (YmdH format for consistency)")
+        logging.info(f"Candidate images per scene: {self.candidate_count}")
         
         # Initialize Mixtral client
         self.mixtral = MixtralClient()
@@ -241,13 +243,13 @@ class VideoGenerator:
             # Check if we should use Roop face swapping
             if self.selected_face_path and getattr(self.sd_client, 'roop_available', False):
                 logging.info(f"🎭 Using Roop face swapping for ultimate consistency")
-                logging.info(f"🎭 Generating {6} images with face swap from {os.path.basename(self.selected_face_path)}")
+                logging.info(f"🎭 Generating {self.candidate_count} images with face swap from {os.path.basename(self.selected_face_path)}")
                 
                 batch_paths = self.sd_client.generate_batch_with_face_swap(
                     prompt=scene_data['prompt'],
                     face_image_path=self.selected_face_path,
                     output_dir=batch_dir,
-                    count=6,
+                    count=self.candidate_count,
                     width=512,
                     height=768,
                     steps=28,
@@ -265,7 +267,7 @@ class VideoGenerator:
                 batch_paths = self.sd_client.generate_batch_images(
                     prompt=scene_data['prompt'],
                     output_dir=batch_dir,
-                    count=6,
+                    count=self.candidate_count,
                     width=512,
                     height=768,
                     steps=28,
@@ -567,15 +569,23 @@ class VideoGenerator:
         width, height = 512, 768
         
         # Initialize video writer with H.264 codec for browser compatibility
-        fourcc = cv2.VideoWriter_fourcc(*'H264')
+        # Use 'avc1' instead of 'H264' for better MP4 container compatibility
+        fourcc = cv2.VideoWriter_fourcc(*'avc1')
         out = cv2.VideoWriter(video_path, fourcc, fps, (width, height))
         
-        # Fallback to other codecs if H264 fails
+        # Fallback to H264 tag if avc1 fails
+        if not out.isOpened():
+            logging.info("avc1 codec failed, trying H264 tag...")
+            fourcc = cv2.VideoWriter_fourcc(*'H264')
+            out = cv2.VideoWriter(video_path, fourcc, fps, (width, height))
+        
+        # Fallback to mp4v if H264 fails
         if not out.isOpened():
             logging.warning("H264 codec failed, trying mp4v...")
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             out = cv2.VideoWriter(video_path, fourcc, fps, (width, height))
             
+        # Fallback to XVID as last resort
         if not out.isOpened():
             logging.warning("mp4v codec failed, trying XVID...")
             fourcc = cv2.VideoWriter_fourcc(*'XVID')
@@ -587,14 +597,15 @@ class VideoGenerator:
             return None
             
         # Detect which codec was used
-        if 'H264' in str(fourcc):
+        fourcc_str = ''.join([chr((fourcc >> 8 * i) & 0xFF) for i in range(4)])
+        if fourcc_str in ['avc1', 'H264']:
             codec_name = "H.264"
-        elif 'mp4v' in str(fourcc):
+        elif fourcc_str == 'mp4v':
             codec_name = "MPEG-4"
-        elif 'XVID' in str(fourcc):
+        elif fourcc_str == 'XVID':
             codec_name = "XVID"
         else:
-            codec_name = "Unknown"
+            codec_name = f"Unknown ({fourcc_str})"
             
         logging.info(f"Creating video: {video_path}")
         logging.info(f"Video settings: {width}x{height} @ {fps}fps using {codec_name} codec")

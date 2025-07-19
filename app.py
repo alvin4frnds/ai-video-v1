@@ -190,7 +190,7 @@ with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome(
 if __name__ == "__main__":
     demo.launch(
         server_name="0.0.0.0",
-        server_port=7860,
+        server_port=8003,
         share=False,
         show_error=True
     )

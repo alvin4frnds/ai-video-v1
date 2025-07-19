@@ -15,7 +15,7 @@ echo "Python version: $(python --version)"
 
 # Launch application
 echo "Starting Gradio interface..."
-echo "📱 Open http://localhost:7860 in your browser"
+echo "📱 Open http://localhost:8003 in your browser"
 echo ""
 
 python app.py

@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git init:*)",
+      "Bash(git config:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(conda:*)",
+      "Bash(chmod:*)",
+      "Bash(python:*)",
+      "Bash(curl:*)",
+      "Bash(ss:*)",
+      "Bash(cd:*)",
+      "Bash(timeout:*)",
+      "Bash(ls:*)",
+      "Bash(touch:*)",
+      "Bash(grep:*)",
+      "Bash(pip install:*)",
+      "Bash(pkill:*)",
+      "Bash(fuser:*)",
+      "Bash(cd:*)",
+      "Bash(cd:*)",
+      "Bash(ffmpeg:*)",
+      "Bash(find:*)",
+      "Bash(ln:*)"
+    ],
+    "deny": []
+  }
+}

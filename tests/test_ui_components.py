@@ -266,7 +266,8 @@ class TestUIInteractions(unittest.TestCase):
         result = app.handle_generation(
             prompt="test prompt",
             candidate_count=2,
-            clean_before_run=False
+            clean_before_run=False,
+            enhanced_transitions=True
         )
         
         # Verify handler returns expected structure
@@ -274,7 +275,7 @@ class TestUIInteractions(unittest.TestCase):
         self.assertEqual(len(result), 6)  # video, gallery, report, images, stats, table
         
         # Verify mock was called with correct parameters
-        mock_pipeline.assert_called_once_with("test prompt", 2, False)
+        mock_pipeline.assert_called_once_with("test prompt", 2, False, True)
         
         logging.info("✅ Generation handler mock test working")
 
@@ -294,7 +295,8 @@ class TestUIInteractions(unittest.TestCase):
         # Test random test handler
         result = app.handle_random_test(
             candidate_count=3,
-            clean_before_run=True
+            clean_before_run=True,
+            enhanced_transitions=False
         )
         
         # Verify handler returns expected structure
@@ -305,6 +307,13 @@ class TestUIInteractions(unittest.TestCase):
         random_prompt = result[0]
         self.assertIsInstance(random_prompt, str)
         self.assertGreater(len(random_prompt), 5)
+        
+        # Verify mock was called with correct parameters (random prompt + other params)
+        mock_pipeline.assert_called_once()
+        call_args = mock_pipeline.call_args[0]
+        self.assertEqual(call_args[1], 3)  # candidate_count
+        self.assertEqual(call_args[2], True)  # clean_before_run  
+        self.assertEqual(call_args[3], False)  # enhanced_transitions
         
         logging.info("✅ Random test handler mock test working")
 

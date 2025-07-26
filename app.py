@@ -9,6 +9,7 @@ import random
 import shutil
 
 from video_generator import VideoGenerator
+from final_enhanced_generator import FinalEnhancedGenerator
 
 # Simple logging setup for console output
 logging.basicConfig(
@@ -33,7 +34,7 @@ def generate_random_test_prompt():
     logging.info(f"Generated random test prompt: {prompt} (seed: {seed})")
     return prompt
 
-def generate_video_pipeline(prompt, candidate_count, clean_before_run, progress=gr.Progress()):
+def generate_video_pipeline(prompt, candidate_count, clean_before_run, enhanced_transitions=False, progress=gr.Progress()):
     """Main video generation pipeline with progress tracking"""
     
     # Clean output frames directory if requested
@@ -136,14 +137,36 @@ def generate_video_pipeline(prompt, candidate_count, clean_before_run, progress=
             logging.info(f"✅ SCENE {i+1} COMPLETED - Final image: {image_path}")
             logging.info("")  # Add spacing between scenes
         
-        # Step 4: Create transitions (80-100%)
-        progress(0.8, "Creating video transitions...")
-        logging.info("Step 4/4: Creating video transitions")
+        # Step 4: Create transitions (80-90%)
+        progress(0.8, "Creating standard video transitions...")
+        logging.info("Step 4/5: Creating standard video transitions")
         video_path = generator.create_video_with_transitions(generated_images)
-        progress(1.0, "Video generation complete!")
-        logging.info(f"Video generation complete! Saved to: {video_path}")
         
-        return video_path, generated_images, all_batch_analysis, "Video generation completed"
+        # Step 5: Create enhanced video with WAN-style transitions (90-100%)
+        enhanced_video_path = None
+        if enhanced_transitions:
+            progress(0.9, "Creating enhanced video with WAN-style transitions...")
+            logging.info("Step 5/5: Creating enhanced video with WAN-style transitions")
+            try:
+                enhanced_generator = FinalEnhancedGenerator()
+                enhanced_video_path = enhanced_generator.generate_enhanced_video(
+                    base_prompt=prompt,
+                    fps=30,
+                    transition_frames=20
+                )
+                logging.info(f"Enhanced video created: {enhanced_video_path}")
+            except Exception as e:
+                logging.error(f"Enhanced video generation failed: {e}")
+                enhanced_video_path = None
+        
+        progress(1.0, "Video generation complete!")
+        logging.info(f"Standard video complete: {video_path}")
+        if enhanced_video_path:
+            logging.info(f"Enhanced video complete: {enhanced_video_path}")
+        
+        # Return enhanced video path if available, otherwise standard video
+        final_video_path = enhanced_video_path if enhanced_video_path else video_path
+        return final_video_path, generated_images, all_batch_analysis, "Video generation completed"
         
     except Exception as e:
         logging.error(f"Error during video generation: {str(e)}")
@@ -623,6 +646,12 @@ with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome(
                         info="Automatically clean frames directory before generation"
                     )
             with gr.Row():
+                enhanced_transitions = gr.Checkbox(
+                    label="🎬 Enhanced Transitions (WAN-style)",
+                    value=True,
+                    info="Create ultra-smooth WAN-style transitions between frames using advanced interpolation"
+                )
+            with gr.Row():
                 generate_btn = gr.Button("🚀 Generate Video", variant="primary", size="lg")
                 random_btn = gr.Button("🎲 Random Test", variant="secondary", size="sm")
                 clean_btn = gr.Button("🧹 Clean Output", variant="secondary", size="sm")
@@ -680,8 +709,8 @@ with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome(
     # Remove timer since we no longer have logs display
     
     # Generate button click handler
-    def handle_generation(prompt, candidate_count, clean_before_run):
-        video_path, generated_images, batch_analysis, logs = generate_video_pipeline(prompt, candidate_count, clean_before_run)
+    def handle_generation(prompt, candidate_count, clean_before_run, enhanced_transitions):
+        video_path, generated_images, batch_analysis, logs = generate_video_pipeline(prompt, candidate_count, clean_before_run, enhanced_transitions)
         gallery_data = create_still_preview(generated_images)
         batch_report, batch_images = create_batch_analysis_display(batch_analysis)
         batch_stats = create_batch_summary_stats(batch_analysis)
@@ -691,14 +720,14 @@ with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome(
     # Generate button click handler
     generate_btn.click(
         fn=handle_generation,
-        inputs=[prompt_input, candidate_count, clean_before_run],
+        inputs=[prompt_input, candidate_count, clean_before_run, enhanced_transitions],
         outputs=[video_output, still_gallery, batch_report, batch_gallery, batch_stats, batch_table]
     )
     
     # Random test button click handler
-    def handle_random_test(candidate_count, clean_before_run):
+    def handle_random_test(candidate_count, clean_before_run, enhanced_transitions):
         random_prompt = generate_random_test_prompt()
-        video_path, generated_images, batch_analysis, logs = generate_video_pipeline(random_prompt, candidate_count, clean_before_run)
+        video_path, generated_images, batch_analysis, logs = generate_video_pipeline(random_prompt, candidate_count, clean_before_run, enhanced_transitions)
         gallery_data = create_still_preview(generated_images)
         batch_report, batch_images = create_batch_analysis_display(batch_analysis)
         batch_stats = create_batch_summary_stats(batch_analysis)
@@ -707,7 +736,7 @@ with gr.Blocks(title="AI Video Generation Pipeline", theme=gr.themes.Monochrome(
     
     random_btn.click(
         fn=handle_random_test,
-        inputs=[candidate_count, clean_before_run],
+        inputs=[candidate_count, clean_before_run, enhanced_transitions],
         outputs=[prompt_input, video_output, still_gallery, batch_report, batch_gallery, batch_stats, batch_table]
     )
     

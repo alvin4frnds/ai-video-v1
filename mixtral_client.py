@@ -212,6 +212,7 @@ Create a comprehensive character description focusing on visual consistency for 
                 {"role": "user", "content": user_prompt}
             ],
             "stream": False,
+            "keep_alive": "30m",
             "options": {
                 "temperature": 0.7,
                 "top_p": 0.9,
